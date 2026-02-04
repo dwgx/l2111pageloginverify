@@ -348,7 +348,8 @@ public final class WebAdminServer {
         sb.append(".subtitle { color: #9aa0a6; margin-bottom: 12px; }\n");
         sb.append(".grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }\n");
         sb.append("label { display: block; margin-bottom: 6px; }\n");
-        sb.append("input[type=text], input[type=number] { width: 100%; padding: 6px; }\n");
+        sb.append("select, input[type=text], input[type=number] { width: 100%; padding: 6px; background: #14151a; color: #e7e7e7; border: 1px solid #3a3a44; border-radius: 4px; }\n");
+        sb.append("select:focus, input:focus { outline: 2px solid #5fead2; box-shadow: 0 0 0 2px rgba(95,234,210,0.35); }\n");
         sb.append(".table { width: 100%; border-collapse: collapse; }\n");
         sb.append(".table th, .table td { border-bottom: 1px solid #333; padding: 8px; font-size: 12px; }\n");
         sb.append(".avatar { width: 32px; height: 32px; image-rendering: pixelated; }\n");
