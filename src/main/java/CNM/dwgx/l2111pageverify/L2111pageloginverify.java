@@ -22,6 +22,7 @@ public final class L2111pageloginverify extends JavaPlugin {
         if (!isInitialized()) {
             setInitialized(true);
         }
+        sanitizeWebText();
         saveConfig();
 
         userStore = new UserStore(this);
@@ -139,6 +140,42 @@ public final class L2111pageloginverify extends JavaPlugin {
                     viewer.showPlayer(this, target);
                 }
             }
+        }
+    }
+
+    private void sanitizeWebText() {
+        ensureWebText("title", "Verification Console");
+        ensureWebText("subtitle", "l2111pageloginverify Web");
+        ensureWebText("section-users", "Users");
+        ensureWebText("section-settings", "Settings");
+        ensureWebText("column-uuid", "UUID");
+        ensureWebText("column-name", "Minecraft Name");
+        ensureWebText("column-avatar", "Avatar");
+        ensureWebText("column-account", "Account");
+        ensureWebText("column-password", "Password/Hash");
+        ensureWebText("column-key", "Key/Salt");
+        ensureWebText("column-register", "Registered");
+        ensureWebText("column-login", "Last Login");
+        ensureWebText("column-pending", "Pending Item");
+        ensureWebText("column-pending-log", "Pending Log");
+        ensureWebText("setting-enabled", "Verification");
+        ensureWebText("setting-encryption", "Encryption");
+        ensureWebText("setting-chat", "Chat Before Verify");
+        ensureWebText("setting-hide", "Hide Unverified");
+        ensureWebText("setting-sound", "Success Sound");
+        ensureWebText("setting-volume", "Volume / Pitch");
+        ensureWebText("setting-save", "Save");
+        ensureWebText("status-on", "ON");
+        ensureWebText("status-off", "OFF");
+        ensureWebText("pending-stored-label", "stored");
+        ensureWebText("pending-restored-label", "restored");
+    }
+
+    private void ensureWebText(String key, String fallback) {
+        String path = "web.text." + key;
+        String value = getConfig().getString(path, "");
+        if (value == null || value.isBlank() || value.contains("?")) {
+            getConfig().set(path, fallback);
         }
     }
 }

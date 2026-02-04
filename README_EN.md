@@ -11,6 +11,7 @@ A Paper 1.21.11 login/registration verification plugin using a server-issued ver
 - Book content/colors fully configurable in YAML
 - Login info tracking (IP / time / per-login salt)
 - Separate datasets for encrypted vs plaintext mode (switchable)
+- Built-in local web admin panel (pure Java, no external HTML files)
 
 ## Commands
 - `/dwgxverify`
@@ -27,6 +28,11 @@ A Paper 1.21.11 login/registration verification plugin using a server-issued ver
   - Toggle encryption (true=HASHED / false=PLAINTEXT)
   - Datasets are stored separately
 
+## Web Panel
+- Enabled by default on `127.0.0.1:1337` (change via `web.bind` / `web.port`)
+- View users and toggle modes from the browser
+- Basic Auth via `web.auth.username` / `web.auth.password`
+
 ## Configuration
 See `config.yml`. Common keys:
 - `encryption-enabled`: true/false
@@ -39,42 +45,6 @@ Stored under separate sections:
 - `data.hashed` for encrypted mode
 - `data.plain` for plaintext mode
 
-Example:
-```
-data:
-  hashed:
-    <uuid>:
-      account: ...
-      password: ...
-      salt: ...
-      mode: HASHED
-      last_login:
-        ip: "1.2.3.4"
-        time: 1730000000000
-        salt: "..."
-      pending:
-        bytes: "..."
-        slot: 8
-      pending_log:
-        stored:
-          time: 1730000000000
-          slot: 8
-          type: DIAMOND_SWORD
-          amount: 1
-        restored:
-          time: 1730000001234
-          slot: 8
-          type: DIAMOND_SWORD
-          amount: 1
-```
-
 ## Encoding Notes
 - Java source files must be UTF-8 **without BOM** (javac requirement).
 - `config.yml` is saved as UTF-8 **with BOM** for Windows editors.
-
-
-## Web Panel
-- Enabled by default on `127.0.0.1:1337` (change via `web.bind` / `web.port`)
-- View users and toggle modes from the browser
-- Basic Auth via `web.auth.username` / `web.auth.password`
-
