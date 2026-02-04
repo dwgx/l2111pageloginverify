@@ -8,6 +8,8 @@ public record UserRecord(
         String password,
         String salt,
         PasswordMode mode,
+        String minecraftName,
+        long registeredAt,
         String lastLoginIp,
         long lastLoginAt,
         String lastLoginSalt

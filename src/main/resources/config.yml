@@ -1,4 +1,4 @@
-﻿﻿initialized: true
+﻿﻿﻿﻿initialized: true
 enabled: true
 encryption-enabled: true
 require-online-mode: true
@@ -17,6 +17,38 @@ hide-unverified: false
 log-pending: true
 # Log login info (IP/salt) updates
 log-login-info: true
+
+web:
+  enabled: true
+  bind: "127.0.0.1"
+  port: 1337
+  auth:
+    enabled: true
+    username: "admin"
+    password: "change-me"
+  text:
+    title: "?????"
+    subtitle: "l2111pageloginverify Web"
+    section-users: "????"
+    section-settings: "?????"
+    column-uuid: "UUID"
+    column-name: "????"
+    column-avatar: "??"
+    column-account: "??"
+    column-password: "??/??"
+    column-key: "??"
+    column-register: "????"
+    column-login: "????"
+    column-pending: "????"
+    column-pending-log: "????"
+    setting-enabled: "????"
+    setting-encryption: "????"
+    setting-chat: "?????"
+    setting-hide: "?????"
+    setting-sound: "????"
+    setting-save: "??"
+    status-on: "??"
+    status-off: "??"
 
 messages:
   not-initialized: "§c服务器尚未初始化，请联系管理员。"

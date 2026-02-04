@@ -11,6 +11,7 @@ public final class L2111pageloginverify extends JavaPlugin {
     private UserStore userStore;
     private VerificationManager verificationManager;
     private VerificationBookService bookService;
+    private WebAdminServer webAdminServer;
 
     @Override
     public void onEnable() {
@@ -50,10 +51,16 @@ public final class L2111pageloginverify extends JavaPlugin {
         if (!isInitialized()) {
             getLogger().warning("Verification plugin not initialized. Run /dwgxverify pass set <hash|plain> as admin.");
         }
+
+        webAdminServer = new WebAdminServer(this, userStore);
+        webAdminServer.start();
     }
 
     @Override
     public void onDisable() {
+        if (webAdminServer != null) {
+            webAdminServer.stop();
+        }
         if (userStore != null) {
             userStore.save();
         }

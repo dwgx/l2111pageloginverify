@@ -530,7 +530,8 @@ public final class VerificationListener implements Listener {
                 player.getUniqueId(),
                 account,
                 password,
-                plugin.getDefaultPasswordMode()
+                plugin.getDefaultPasswordMode(),
+                player.getName()
         );
         if (!registered) {
             verificationManager.setNotice(player.getUniqueId(),

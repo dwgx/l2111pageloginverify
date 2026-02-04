@@ -71,3 +71,10 @@ data:
 ## Encoding Notes
 - Java source files must be UTF-8 **without BOM** (javac requirement).
 - `config.yml` is saved as UTF-8 **with BOM** for Windows editors.
+
+
+## Web Panel
+- Enabled by default on `127.0.0.1:1337` (change via `web.bind` / `web.port`)
+- View users and toggle modes from the browser
+- Basic Auth via `web.auth.username` / `web.auth.password`
+

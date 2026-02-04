@@ -81,10 +81,13 @@ public final class UserStore {
             if (recordMode == null) {
                 recordMode = mode != null ? mode : PasswordMode.HASHED;
             }
+            String mcName = section.getString(key + ".minecraft_name", "");
+            long registeredAt = section.getLong(key + ".register.time", 0L);
             String lastIp = section.getString(key + ".last_login.ip", "");
             long lastAt = section.getLong(key + ".last_login.time", 0L);
             String lastSalt = section.getString(key + ".last_login.salt", "");
-            UserRecord record = new UserRecord(uuid, account, password, salt, recordMode, lastIp, lastAt, lastSalt);
+            UserRecord record = new UserRecord(uuid, account, password, salt, recordMode, mcName, registeredAt,
+                    lastIp, lastAt, lastSalt);
             users.put(uuid, record);
             if (!account.isEmpty()) {
                 accountIndex.put(account.toLowerCase(Locale.ROOT), uuid);
@@ -170,6 +173,16 @@ public final class UserStore {
                 config.set(path + ".salt", record.salt());
             }
             config.set(path + ".mode", record.mode().name());
+            if (record.minecraftName() != null && !record.minecraftName().isEmpty()) {
+                config.set(path + ".minecraft_name", record.minecraftName());
+            } else {
+                config.set(path + ".minecraft_name", null);
+            }
+            if (record.registeredAt() > 0L) {
+                config.set(path + ".register.time", record.registeredAt());
+            } else {
+                config.set(path + ".register.time", null);
+            }
             if (record.lastLoginIp() != null && !record.lastLoginIp().isEmpty()) {
                 config.set(path + ".last_login.ip", record.lastLoginIp());
             } else {
@@ -243,7 +256,7 @@ public final class UserStore {
         return accountIndex.containsKey(account.trim().toLowerCase(Locale.ROOT));
     }
 
-    public boolean register(UUID uuid, String account, String password, PasswordMode mode) {
+    public boolean register(UUID uuid, String account, String password, PasswordMode mode, String minecraftName) {
         if (users.containsKey(uuid)) {
             return false;
         }
@@ -263,7 +276,10 @@ public final class UserStore {
             storedPassword = password;
         }
 
-        UserRecord record = new UserRecord(uuid, account.trim(), storedPassword, salt, mode, "", 0L, "");
+        long registeredAt = System.currentTimeMillis();
+        String mcName = minecraftName != null ? minecraftName : "";
+        UserRecord record = new UserRecord(uuid, account.trim(), storedPassword, salt, mode,
+                mcName, registeredAt, "", 0L, "");
         users.put(uuid, record);
         accountIndex.put(accountKey, uuid);
         save();
@@ -272,6 +288,14 @@ public final class UserStore {
 
     public PendingItem getPendingItem(UUID uuid) {
         return pendingItems.get(uuid);
+    }
+
+    public PendingLog getPendingLog(UUID uuid) {
+        return pendingLogs.get(uuid);
+    }
+
+    public Map<UUID, UserRecord> getUsersSnapshot() {
+        return new HashMap<>(users);
     }
 
     public void setPendingItem(UUID uuid, ItemStack item, int slot) {
@@ -307,12 +331,15 @@ public final class UserStore {
         }
         long now = System.currentTimeMillis();
         String loginSalt = generateLoginSalt();
+        String mcName = player.getName();
         UserRecord updated = new UserRecord(
                 record.uuid(),
                 record.account(),
                 record.password(),
                 record.salt(),
                 record.mode(),
+                mcName,
+                record.registeredAt() > 0L ? record.registeredAt() : System.currentTimeMillis(),
                 ip,
                 now,
                 loginSalt
