@@ -1,0 +1,73 @@
+﻿# l2111pageloginverify
+
+A Paper 1.21.11 login/registration verification plugin using a server-issued verification book.
+
+## Features
+- Register/login by signing the verification book
+- Full action block before verification (movement, interaction, chat, commands, inventory, damage, etc.)
+- Safe-store items when inventory is full, auto-restore after verification (keeps NBT/enchant/durability)
+- Option to hide unverified players
+- Success sound + ActionBar message
+- Book content/colors fully configurable in YAML
+- Login info tracking (IP / time / per-login salt)
+- Separate datasets for encrypted vs plaintext mode (switchable)
+
+## Commands
+- `/dwgxverify`
+  - Give verification book (login or register depending on record)
+- `/dwgxverify toggle`
+  - Enable/disable verification
+- `/dwgxverify chat <on|off>`
+  - Allow/disallow chat before verification
+- `/dwgxverify sound <Sound> [volume] [pitch]`
+  - Set success sound
+- `/dwgxverify hide <on|off>`
+  - Hide/show unverified players
+- `/dwgxverify encryption <true|false>`
+  - Toggle encryption (true=HASHED / false=PLAINTEXT)
+  - Datasets are stored separately
+
+## Configuration
+See `config.yml`. Common keys:
+- `encryption-enabled`: true/false
+- `log-pending`: log pending store/restore
+- `log-login-info`: log IP/salt updates
+- `book.*`: book content/colors
+
+## Data (users.yml)
+Stored under separate sections:
+- `data.hashed` for encrypted mode
+- `data.plain` for plaintext mode
+
+Example:
+```
+data:
+  hashed:
+    <uuid>:
+      account: ...
+      password: ...
+      salt: ...
+      mode: HASHED
+      last_login:
+        ip: "1.2.3.4"
+        time: 1730000000000
+        salt: "..."
+      pending:
+        bytes: "..."
+        slot: 8
+      pending_log:
+        stored:
+          time: 1730000000000
+          slot: 8
+          type: DIAMOND_SWORD
+          amount: 1
+        restored:
+          time: 1730000001234
+          slot: 8
+          type: DIAMOND_SWORD
+          amount: 1
+```
+
+## Encoding Notes
+- Java source files must be UTF-8 **without BOM** (javac requirement).
+- `config.yml` is saved as UTF-8 **with BOM** for Windows editors.

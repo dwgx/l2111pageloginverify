@@ -1,0 +1,103 @@
+﻿﻿initialized: true
+enabled: true
+encryption-enabled: true
+require-online-mode: true
+allow-chat-before-verify: false
+# Whether to auto-open the verification book
+auto-open-book: false
+# Whether to hard-force keeping the book UI open
+hard-force-open: false
+# Allow temporary flight to avoid kicks before verification
+allow-flight-while-unverified: true
+# Show block title before verification
+show-block-title: true
+# Hide unverified players from others
+hide-unverified: false
+# Log pending item store/restore in console
+log-pending: true
+# Log login info (IP/salt) updates
+log-login-info: true
+
+messages:
+  not-initialized: "§c服务器尚未初始化，请联系管理员。"
+  online-mode-required: "§c服务器未开启正版验证 (online-mode=true)，无法进入。"
+  open-login-book: "§7请打开验证书本，在第2页填写账号/密码并点击“签名”。"
+  open-register-book: "§7请打开验证书本，在第2页填写账号/密码/确认并点击“签名”。"
+  login-success: "§b登录成功，已解锁操作。"
+  login-failed: "§c登录失败：账号或密码错误。"
+  register-success: "§b注册成功，已解锁操作。"
+  register-failed: "§c注册失败：%reason%"
+  register-already: "该账号已存在"
+  verification-enabled: "§a验证已开启。"
+  verification-disabled: "§e验证已关闭。"
+  chat-allowed: "§a未登录聊天已开启。"
+  chat-blocked: "§e未登录聊天已关闭。"
+  no-permission: "§c你没有权限执行该指令。"
+  invalid-book: "§c无效的验证书本，请使用服务器发放的书本。"
+  must-sign: "§e请点击“签名”提交。"
+  format-login: "§e格式错误：请按 账号/密码 两行填写。"
+  format-register: "§e格式错误：请按 账号/密码/确认 三行填写。"
+  password-mismatch: "§c两次密码不一致。"
+  account-taken: "§c账号已被占用。"
+  not-verified: "§e你尚未验证，请先完成书本登录/注册。"
+  blocked-title: "§c请先完成验证"
+  blocked-subtitle: "§7输入 /dwgxverify 或右键打开书本"
+  success-actionbar: "§b%player% さま降临了 ᗜˬᗜ"
+  broadcast-success: "%player% 登录成功。"
+  usage-chat: "/dwgxverify chat <on|off>"
+  usage-sound: "/dwgxverify sound <Sound> [volume] [pitch]"
+  usage-hide: "/dwgxverify hide <on|off>"
+  usage-encryption: "/dwgxverify encryption <true|false>"
+  encryption-on: "§a已开启加密模式（HASHED）。"
+  encryption-off: "§e已关闭加密模式（PLAINTEXT）。"
+  player-only: "§e该指令只能由玩家执行。"
+  sound-set: "§a音效已设置：%sound%  音量 %vol%  音高 %pitch%。"
+  hide-on: "§a未验证玩家已隐藏。"
+  hide-off: "§e未验证玩家已显示。"
+  pending-stored: "§e背包已满，物品已暂存到服务器，验证后会归还。"
+  pending-restored: "§a已归还暂存物品。"
+  pending-full: "§e背包仍满，暂存物品未归还，请腾出空位后再试。"
+
+sound:
+  success: "ENTITY_PLAYER_LEVELUP"
+  volume: 1.0
+  pitch: 1.0
+
+book:
+  item-name: "§b验证书本"
+  title: "§8§l✦ §b验证书本 §8§l✦"
+  login-guide:
+    - "§7模式: §a登录 ᗜᴗᗜ"
+    - "§7步骤: §l§0翻到第2页输入账号/密码"
+    - "§7提交: §l§0点击“签名”"
+    - ""
+    - "§8提示: §7支持 /dwgxverify 重新获取"
+  register-guide:
+    - "§7模式: §a注册 ᗜˬᗜ"
+    - "§7步骤: §l§0翻到第2页输入账号/密码/确认"
+    - "§7提交: §l§0点击“签名”"
+    - ""
+    - "§8提示: §7支持 /dwgxverify 重新获取"
+  intro-footer:
+    - ""
+    - "§8→ §7请翻到第2页填写"
+  input-login:
+    - "§7账号:"
+    - ""
+    - "§7密码:"
+    - ""
+  input-register:
+    - "§7账号:"
+    - ""
+    - "§7密码:"
+    - ""
+    - "§7确认:"
+    - ""
+  input-footer:
+    - ""
+    - "§8(填写完点击“签名”提交)"
+    - ""
+  log-title: "§b§l日志:"
+  log-empty: "§7暂无"
+  log-color-info: "§b"
+  log-color-error: "§c"

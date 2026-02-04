@@ -1,0 +1,17 @@
+name: l2111pageloginverify
+version: '${version}'
+main: CNM.dwgx.l2111pageverify.L2111pageloginverify
+api-version: '1.21'
+load: STARTUP
+authors: [ dwgx ]
+description: "Paper login verification with book input."
+website: "https://www.github.com/dwgx"
+softdepend: [ ProtocolLib ]
+commands:
+  dwgxverify:
+    description: "Login/registration verification and admin setup."
+    usage: "/dwgxverify [toggle | chat <on|off> | sound <Sound> [vol] [pitch] | hide <on|off> | encryption <true|false>]"
+permissions:
+  dwgxverify.admin:
+    description: "Allow configuring the verification plugin."
+    default: op
