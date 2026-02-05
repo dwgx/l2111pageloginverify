@@ -23,6 +23,8 @@ public final class VerificationManager {
     private final Map<UUID, Long> lastOpenTimes = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> prevAllowFlight = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> prevFlying = new ConcurrentHashMap<>();
+    private final Set<UUID> timedOut = ConcurrentHashMap.newKeySet();
+    private final Set<UUID> titleShown = ConcurrentHashMap.newKeySet();
 
     public boolean isVerified(UUID uuid) {
         return verified.contains(uuid);
@@ -31,10 +33,12 @@ public final class VerificationManager {
     public void markVerified(UUID uuid) {
         verified.add(uuid);
         sessions.remove(uuid);
+        titleShown.remove(uuid);
     }
 
     public void markUnverified(UUID uuid) {
         verified.remove(uuid);
+        titleShown.remove(uuid);
     }
 
     public void clear(UUID uuid) {
@@ -48,6 +52,8 @@ public final class VerificationManager {
         lastOpenTimes.remove(uuid);
         prevAllowFlight.remove(uuid);
         prevFlying.remove(uuid);
+        timedOut.remove(uuid);
+        titleShown.remove(uuid);
     }
 
     public void setSession(UUID uuid, SessionType type) {
@@ -129,6 +135,18 @@ public final class VerificationManager {
 
     public Boolean getPrevFlying(UUID uuid) {
         return prevFlying.get(uuid);
+    }
+
+    public boolean markTitleShown(UUID uuid) {
+        return titleShown.add(uuid);
+    }
+
+    public void markTimedOut(UUID uuid) {
+        timedOut.add(uuid);
+    }
+
+    public boolean consumeTimedOut(UUID uuid) {
+        return timedOut.remove(uuid);
     }
 }
 

@@ -10,15 +10,18 @@ public final class VerificationEnforcer implements Runnable {
 
     private final L2111pageloginverify plugin;
     private final UserStore userStore;
+    private final ResetRequestStore resetStore;
     private final VerificationManager verificationManager;
     private final VerificationBookService bookService;
 
     public VerificationEnforcer(L2111pageloginverify plugin,
                                 UserStore userStore,
+                                ResetRequestStore resetStore,
                                 VerificationManager verificationManager,
                                 VerificationBookService bookService) {
         this.plugin = plugin;
         this.userStore = userStore;
+        this.resetStore = resetStore;
         this.verificationManager = verificationManager;
         this.bookService = bookService;
     }
@@ -30,6 +33,18 @@ public final class VerificationEnforcer implements Runnable {
         }
         for (Player player : Bukkit.getOnlinePlayers()) {
             UUID uuid = player.getUniqueId();
+            if (plugin.isAdminVerifyEnabled()
+                    && userStore.hasUser(uuid)
+                    && !userStore.isApproved(uuid)
+                    && (resetStore == null || !resetStore.isApproved(uuid))) {
+                if (verificationManager.isVerified(uuid)) {
+                    verificationManager.markUnverified(uuid);
+                }
+                verificationManager.setSession(uuid, VerificationManager.SessionType.LOGIN);
+                if (verificationManager.getNotice(uuid) == null) {
+                    verificationManager.setNotice(uuid, plugin.message("admin-verify-required"), NoticeType.ERROR);
+                }
+            }
             if (verificationManager.isVerified(uuid)) {
                 userStore.tryRestorePendingItem(player, false);
                 continue;

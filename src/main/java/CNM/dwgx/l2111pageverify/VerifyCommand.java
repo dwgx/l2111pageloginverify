@@ -15,13 +15,16 @@ public final class VerifyCommand implements CommandExecutor, TabCompleter {
 
     private final L2111pageloginverify plugin;
     private final UserStore userStore;
+    private final ResetRequestStore resetStore;
     private final VerificationManager verificationManager;
     private final VerificationBookService bookService;
 
-    public VerifyCommand(L2111pageloginverify plugin, UserStore userStore, VerificationManager verificationManager,
+    public VerifyCommand(L2111pageloginverify plugin, UserStore userStore, ResetRequestStore resetStore,
+                         VerificationManager verificationManager,
                          VerificationBookService bookService) {
         this.plugin = plugin;
         this.userStore = userStore;
+        this.resetStore = resetStore;
         this.verificationManager = verificationManager;
         this.bookService = bookService;
     }
@@ -51,6 +54,9 @@ public final class VerifyCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length >= 1 && "unapprove".equalsIgnoreCase(args[0])) {
             return handleApprove(sender, args, false);
+        }
+        if (args.length >= 1 && "reset".equalsIgnoreCase(args[0])) {
+            return handleReset(sender, args);
         }
 
         if (sender instanceof Player player) {
@@ -146,6 +152,9 @@ public final class VerifyCommand implements CommandExecutor, TabCompleter {
             if ("unapprove".startsWith(args[0].toLowerCase(Locale.ROOT))) {
                 completions.add("unapprove");
             }
+            if ("reset".startsWith(args[0].toLowerCase(Locale.ROOT))) {
+                completions.add("reset");
+            }
         } else if (args.length == 2) {
             if ("chat".equalsIgnoreCase(args[0])) {
                 if ("on".startsWith(args[1].toLowerCase(Locale.ROOT))) {
@@ -176,6 +185,13 @@ public final class VerifyCommand implements CommandExecutor, TabCompleter {
                 }
                 if ("off".startsWith(args[1].toLowerCase(Locale.ROOT))) {
                     completions.add("off");
+                }
+            } else if ("reset".equalsIgnoreCase(args[0])) {
+                if ("approve".startsWith(args[1].toLowerCase(Locale.ROOT))) {
+                    completions.add("approve");
+                }
+                if ("reject".startsWith(args[1].toLowerCase(Locale.ROOT))) {
+                    completions.add("reject");
                 }
             }
         }
@@ -321,6 +337,55 @@ public final class VerifyCommand implements CommandExecutor, TabCompleter {
             plugin.unlockPlayerAfterApproval(online);
             online.sendMessage(plugin.message("admin-verify-approved"));
         }
+        return true;
+    }
+
+    private boolean handleReset(CommandSender sender, String[] args) {
+        if (!sender.hasPermission("dwgxverify.admin")) {
+            sender.sendMessage(plugin.message("no-permission"));
+            return true;
+        }
+        if (args.length < 3) {
+            sender.sendMessage(plugin.message("usage-reset"));
+            return true;
+        }
+        String action = args[1].toLowerCase(Locale.ROOT);
+        String target = args[2];
+        UUID uuid = null;
+        try {
+            uuid = UUID.fromString(target);
+        } catch (IllegalArgumentException ex) {
+            org.bukkit.OfflinePlayer offline = org.bukkit.Bukkit.getOfflinePlayer(target);
+            if (offline != null) {
+                uuid = offline.getUniqueId();
+            }
+        }
+        if (uuid == null || resetStore == null) {
+            sender.sendMessage(plugin.message("reset-approve-failed"));
+            return true;
+        }
+        boolean ok;
+        if ("reject".equals(action)) {
+            ok = resetStore.reject(uuid, sender.getName());
+            if (ok) {
+                userStore.logAction(uuid, "reset-reject", "by=" + sender.getName());
+            }
+        } else if ("approve".equals(action)) {
+            ok = resetStore.approve(uuid, sender.getName());
+            if (ok) {
+                plugin.lockPlayerForReset(uuid, sender.getName());
+            }
+        } else {
+            sender.sendMessage(plugin.message("usage-reset"));
+            return true;
+        }
+        if (!ok) {
+            sender.sendMessage(plugin.message("reset-approve-failed"));
+            return true;
+        }
+        sender.sendMessage("approve".equals(action)
+                ? plugin.message("reset-approve-success")
+                : plugin.message("reset-reject-success"));
         return true;
     }
 

@@ -18,6 +18,7 @@ public final class LogsStore {
     private YamlConfiguration config;
     private int maxLogin;
     private int maxPending;
+    private int maxActions;
 
     public LogsStore(L2111pageloginverify plugin) {
         this.plugin = plugin;
@@ -38,6 +39,7 @@ public final class LogsStore {
         config = YamlConfiguration.loadConfiguration(file);
         maxLogin = plugin.getConfig().getInt("logs.max-login", 200);
         maxPending = plugin.getConfig().getInt("logs.max-pending", 200);
+        maxActions = plugin.getConfig().getInt("logs.max-actions", 300);
     }
 
     public void appendLogin(UUID uuid, String account, String mcName, String ip, long time, String loginSalt, PasswordMode mode) {
@@ -80,6 +82,25 @@ public final class LogsStore {
             updated.remove(0);
         }
         config.set("pending", updated);
+        save();
+    }
+
+    public void appendAction(UUID uuid, String action, String detail) {
+        if (config == null) {
+            return;
+        }
+        Map<String, Object> entry = new HashMap<>();
+        entry.put("uuid", uuid == null ? "" : uuid.toString());
+        entry.put("action", action == null ? "" : action);
+        entry.put("detail", detail == null ? "" : detail);
+        entry.put("time", System.currentTimeMillis());
+        List<Map<?, ?>> list = config.getMapList("actions");
+        List<Map<?, ?>> updated = new ArrayList<>(list);
+        updated.add(entry);
+        while (updated.size() > maxActions) {
+            updated.remove(0);
+        }
+        config.set("actions", updated);
         save();
     }
 

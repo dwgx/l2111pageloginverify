@@ -262,6 +262,10 @@ public final class UserStore {
         );
         users.put(uuid, updated);
         save();
+        if (logsStore != null) {
+            logsStore.appendAction(uuid, approved ? "approved" : "unapproved",
+                    "account=" + safe(record.account()));
+        }
         return true;
     }
 
@@ -299,6 +303,48 @@ public final class UserStore {
                 mcName, registeredAt, registerIp == null ? "" : registerIp, approved, "", 0L, "");
         users.put(uuid, record);
         accountIndex.put(accountKey, uuid);
+        save();
+        if (logsStore != null) {
+            logsStore.appendAction(uuid, "register", "account=" + safe(account));
+        }
+        return true;
+    }
+
+    public boolean resetPassword(UUID uuid, String account, String newPassword, PasswordMode mode) {
+        UserRecord record = users.get(uuid);
+        if (record == null) {
+            return false;
+        }
+        if (account == null || !record.account().equalsIgnoreCase(account.trim())) {
+            return false;
+        }
+        String storedPassword;
+        String salt = record.salt();
+        PasswordMode useMode = mode == null ? record.mode() : mode;
+        if (useMode == PasswordMode.HASHED) {
+            byte[] saltBytes = new byte[16];
+            secureRandom.nextBytes(saltBytes);
+            salt = Base64.getEncoder().encodeToString(saltBytes);
+            int iterations = plugin.getConfig().getInt("security.pbkdf2-iterations", 60000);
+            storedPassword = "pbkdf2$" + iterations + "$" + hashPasswordPbkdf2(newPassword, saltBytes, iterations);
+        } else {
+            storedPassword = newPassword;
+        }
+        UserRecord updated = new UserRecord(
+                record.uuid(),
+                record.account(),
+                storedPassword,
+                salt,
+                useMode,
+                record.minecraftName(),
+                record.registeredAt(),
+                record.registerIp(),
+                record.approved(),
+                record.lastLoginIp(),
+                record.lastLoginAt(),
+                record.lastLoginSalt()
+        );
+        users.put(uuid, updated);
         save();
         return true;
     }
@@ -365,6 +411,7 @@ public final class UserStore {
         save();
         if (logsStore != null) {
             logsStore.appendLogin(uuid, record.account(), mcName, ip, now, loginSalt, record.mode());
+            logsStore.appendAction(uuid, "login", "account=" + safe(record.account()));
         }
         if (plugin.getConfig().getBoolean("log-login-info", true)) {
             plugin.getLogger().info("Login info updated for " + player.getName()
@@ -420,6 +467,32 @@ public final class UserStore {
                     + " slot=" + slot + " type=" + item.getType() + " x" + item.getAmount());
         }
         return false;
+    }
+
+    public UserRecord removeUser(UUID uuid, String reason) {
+        UserRecord record = users.remove(uuid);
+        if (record == null) {
+            return null;
+        }
+        if (record.account() != null && !record.account().isEmpty()) {
+            accountIndex.remove(record.account().toLowerCase(Locale.ROOT));
+        }
+        save();
+        if (logsStore != null) {
+            logsStore.appendAction(uuid, "user-removed",
+                    "account=" + safe(record.account()) + (reason == null ? "" : " reason=" + reason));
+        }
+        return record;
+    }
+
+    public void logAction(UUID uuid, String action, String detail) {
+        if (logsStore != null) {
+            logsStore.appendAction(uuid, action, detail);
+        }
+    }
+
+    private String safe(String raw) {
+        return raw == null ? "" : raw;
     }
 
     public boolean verify(UUID uuid, String account, String password) {

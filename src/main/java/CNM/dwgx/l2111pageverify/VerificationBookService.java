@@ -19,16 +19,19 @@ public final class VerificationBookService {
     private final L2111pageloginverify plugin;
     private final VerificationManager verificationManager;
     private final UserStore userStore;
+    private final ResetRequestStore resetStore;
     private final NamespacedKey tokenKey;
     private final NamespacedKey ownerKey;
     private final NamespacedKey typeKey;
 
     public VerificationBookService(L2111pageloginverify plugin,
                                    VerificationManager verificationManager,
-                                   UserStore userStore) {
+                                   UserStore userStore,
+                                   ResetRequestStore resetStore) {
         this.plugin = plugin;
         this.verificationManager = verificationManager;
         this.userStore = userStore;
+        this.resetStore = resetStore;
         this.tokenKey = new NamespacedKey(plugin, "verify_token");
         this.ownerKey = new NamespacedKey(plugin, "verify_owner");
         this.typeKey = new NamespacedKey(plugin, "verify_type");
@@ -224,11 +227,13 @@ public final class VerificationBookService {
     }
 
     private List<String> buildPages(UUID uuid, VerificationManager.SessionType type, String notice, NoticeType noticeType) {
-        List<String> pages = new ArrayList<>(3);
+        List<String> pages = new ArrayList<>(5);
         pages.add(buildIntroPage(type));
         pages.add(buildInputPage(type));
         NoticeType typeToUse = noticeType != null ? noticeType : verificationManager.getNoticeType(uuid);
         pages.add(buildLogPage(notice, typeToUse));
+        pages.add(buildResetPage(uuid));
+        pages.add(buildRulesPage());
         return pages;
     }
 
@@ -273,6 +278,29 @@ public final class VerificationBookService {
                 : plugin.getConfig().getString("book.log-color-info", "\u00A7b");
         if (msg != null && !msg.isBlank()) {
             lines.add(color + msg);
+        }
+        return String.join("\n", lines);
+    }
+
+    private String buildResetPage(UUID uuid) {
+        List<String> lines = new ArrayList<>();
+        List<String> reset = plugin.getConfig().getStringList("book.reset-page");
+        if (!reset.isEmpty()) {
+            lines.addAll(reset);
+        }
+        ResetRequestStore.ResetRequest req = resetStore != null ? resetStore.get(uuid) : null;
+        if (req != null && req.status() == ResetRequestStore.Status.REJECTED) {
+            lines.add("");
+            lines.add(plugin.message("reset-rejected-line"));
+        }
+        return String.join("\n", lines);
+    }
+
+    private String buildRulesPage() {
+        List<String> lines = new ArrayList<>();
+        List<String> rules = plugin.getConfig().getStringList("book.rules-page");
+        if (!rules.isEmpty()) {
+            lines.addAll(rules);
         }
         return String.join("\n", lines);
     }

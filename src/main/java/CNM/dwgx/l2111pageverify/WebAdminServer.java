@@ -25,14 +25,16 @@ public final class WebAdminServer {
 
     private final L2111pageloginverify plugin;
     private final UserStore userStore;
+    private final ResetRequestStore resetStore;
     private HttpServer server;
     private ExecutorService executor;
     private String bind;
     private int port;
 
-    public WebAdminServer(L2111pageloginverify plugin, UserStore userStore) {
+    public WebAdminServer(L2111pageloginverify plugin, UserStore userStore, ResetRequestStore resetStore) {
         this.plugin = plugin;
         this.userStore = userStore;
+        this.resetStore = resetStore;
     }
 
     public synchronized void start() {
@@ -53,9 +55,13 @@ public final class WebAdminServer {
         server.createContext("/api/users", new UsersHandler());
         server.createContext("/api/config", new ConfigHandler());
         server.createContext("/api/approve", new ApproveHandler());
-        executor = Executors.newCachedThreadPool();
+        server.createContext("/api/resets", new ResetListHandler());
+        server.createContext("/api/reset-decision", new ResetDecisionHandler());
+        int maxThreads = Math.max(2, plugin.getConfig().getInt("web.threads", 4));
+        executor = Executors.newFixedThreadPool(maxThreads);
         server.setExecutor(executor);
         server.start();
+        warnInsecureWebConfig();
         plugin.getLogger().info("Web admin server started at http://" + bind + ":" + port);
     }
 
@@ -136,6 +142,24 @@ public final class WebAdminServer {
         return plugin.getConfig().getString("web.text." + key, fallback);
     }
 
+    private void warnInsecureWebConfig() {
+        boolean localOnly = plugin.getConfig().getBoolean("web.local-only", true);
+        boolean authEnabled = plugin.getConfig().getBoolean("web.auth.enabled", true);
+        String pass = plugin.getConfig().getString("web.auth.password", "change-me");
+        boolean defaultPass = pass == null || pass.isBlank() || "change-me".equalsIgnoreCase(pass.trim());
+        boolean bindAll = "0.0.0.0".equals(bind) || "::".equals(bind);
+        if (!localOnly && !authEnabled) {
+            plugin.getLogger().severe("Web admin is exposed without auth. Enable auth or turn on local-only.");
+            return;
+        }
+        if (!localOnly && defaultPass) {
+            plugin.getLogger().warning("Web admin is exposed with a weak/default password. Change web.auth.password.");
+        }
+        if (bindAll && !localOnly) {
+            plugin.getLogger().warning("Web admin bound to all interfaces. Consider enabling local-only.");
+        }
+    }
+
     private class RootHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
@@ -213,16 +237,87 @@ public final class WebAdminServer {
         }
     }
 
+    private class ResetListHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!checkAuth(exchange)) {
+                return;
+            }
+            String json = buildResetJson();
+            sendText(exchange, 200, json, "application/json");
+        }
+    }
+
+    private class ResetDecisionHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!checkAuth(exchange)) {
+                return;
+            }
+            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendText(exchange, 405, "{\"ok\":false}", "application/json");
+                return;
+            }
+            Map<String, String> params = readParams(exchange);
+            String uuidRaw = params.get("uuid");
+            String action = params.getOrDefault("action", "approve");
+            boolean ok = false;
+            if (uuidRaw != null && resetStore != null) {
+                try {
+                    UUID uuid = UUID.fromString(uuidRaw);
+                    String decidedBy = "web";
+                    if ("reject".equalsIgnoreCase(action)) {
+                        ok = resetStore.reject(uuid, decidedBy);
+                        if (ok) {
+                            userStore.logAction(uuid, "reset-reject", "by=" + decidedBy);
+                        }
+                    } else {
+                        ok = resetStore.approve(uuid, decidedBy);
+                        if (ok) {
+                            plugin.lockPlayerForReset(uuid, decidedBy);
+                        }
+                    }
+                } catch (IllegalArgumentException ex) {
+                    ok = false;
+                }
+            }
+            sendText(exchange, 200, "{\"ok\":" + ok + "}", "application/json");
+        }
+    }
+
     private Map<String, String> readParams(HttpExchange exchange) throws IOException {
         String query = exchange.getRequestURI().getRawQuery();
         String body = "";
+        int maxBytes = Math.max(1024, plugin.getConfig().getInt("web.max-body-bytes", 16384));
         try (InputStream is = exchange.getRequestBody()) {
-            body = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            body = readBodyLimited(is, maxBytes);
         }
         Map<String, String> params = new LinkedHashMap<>();
         parseParams(params, query);
         parseParams(params, body);
         return params;
+    }
+
+    private String readBodyLimited(InputStream is, int maxBytes) throws IOException {
+        if (maxBytes <= 0) {
+            return "";
+        }
+        byte[] buffer = new byte[4096];
+        int total = 0;
+        int read;
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        while ((read = is.read(buffer)) != -1) {
+            if (total + read > maxBytes) {
+                int allowed = Math.max(0, maxBytes - total);
+                if (allowed > 0) {
+                    out.write(buffer, 0, allowed);
+                }
+                break;
+            }
+            out.write(buffer, 0, read);
+            total += read;
+        }
+        return out.toString(StandardCharsets.UTF_8);
     }
 
     private void parseParams(Map<String, String> params, String raw) throws IOException {
@@ -419,6 +514,39 @@ public final class WebAdminServer {
         return root.toString();
     }
 
+    private String buildResetJson() {
+        List<String> entries = new ArrayList<>();
+        if (resetStore != null) {
+            for (ResetRequestStore.ResetRequest req : resetStore.getSnapshot().values()) {
+                StringBuilder sb = new StringBuilder();
+                sb.append("{");
+                sb.append("\"uuid\":\"").append(req.uuid()).append("\",");
+                sb.append("\"account\":\"").append(escapeJson(nullToEmpty(req.account()))).append("\",");
+                String qqDisplay = req.qqPlain();
+                if (qqDisplay == null || qqDisplay.isBlank()) {
+                    if (req.qqSalt() != null && !req.qqSalt().isBlank()) {
+                        qqDisplay = "-";
+                    } else {
+                        qqDisplay = req.qq();
+                    }
+                }
+                sb.append("\"qq\":\"").append(escapeJson(nullToEmpty(qqDisplay))).append("\",");
+                sb.append("\"mcName\":\"").append(escapeJson(nullToEmpty(req.minecraftName()))).append("\",");
+                sb.append("\"mode\":\"").append(req.mode().name()).append("\",");
+                sb.append("\"status\":\"").append(req.status().name()).append("\",");
+                sb.append("\"createdAt\":").append(req.createdAt()).append(',');
+                sb.append("\"decidedAt\":").append(req.decidedAt());
+                sb.append("}");
+                entries.add(sb.toString());
+            }
+        }
+        StringBuilder root = new StringBuilder();
+        root.append("{\"requests\":[");
+        root.append(String.join(",", entries));
+        root.append("]}");
+        return root.toString();
+    }
+
     private String escapeJson(String raw) {
         if (raw == null) {
             return "";
@@ -435,6 +563,7 @@ public final class WebAdminServer {
         String subtitle = text("subtitle", "l2111pageloginverify Web");
         String sectionUsers = text("section-users", "Users");
         String sectionSettings = text("section-settings", "Settings");
+        String sectionResets = text("section-resets", "Reset Requests");
         String colUuid = text("column-uuid", "UUID");
         String colName = text("column-name", "Name");
         String colAvatar = text("column-avatar", "Avatar");
@@ -444,6 +573,12 @@ public final class WebAdminServer {
         String colRegister = text("column-register", "Register");
         String colLogin = text("column-login", "Last Login");
         String colPending = text("column-pending", "Pending");
+        String colResetUuid = text("reset-column-uuid", "UUID");
+        String colResetAccount = text("reset-column-account", "Account");
+        String colResetQq = text("reset-column-qq", "QQ");
+        String colResetMc = text("reset-column-mc", "Minecraft Name");
+        String colResetStatus = text("reset-column-status", "Status");
+        String colResetTime = text("reset-column-time", "Created");
         String settingEnabled = text("setting-enabled", "Verification");
         String settingEncryption = text("setting-encryption", "Encryption");
         String settingChat = text("setting-chat", "Chat Before Verify");
@@ -456,6 +591,8 @@ public final class WebAdminServer {
         String statusOff = text("status-off", "OFF");
         String actionApprove = text("action-approve", "Approve");
         String actionUnapprove = text("action-unapprove", "Unapprove");
+        String actionResetApprove = text("action-reset-approve", "Approve");
+        String actionResetReject = text("action-reset-reject", "Reject");
         String statusApproved = text("status-approved", "Approved");
         String statusPending = text("status-pending", "Pending");
         StringBuilder sb = new StringBuilder();
@@ -578,6 +715,23 @@ public final class WebAdminServer {
         sb.append("      <tbody></tbody>\n");
         sb.append("    </table>\n");
         sb.append("  </div>\n");
+        sb.append("  <div class=\"panel\">\n");
+        sb.append("    <h3>").append(escapeHtml(sectionResets)).append("</h3>\n");
+        sb.append("    <table class=\"table\" id=\"resets\">\n");
+        sb.append("      <thead>\n");
+        sb.append("        <tr>\n");
+        sb.append("          <th>").append(escapeHtml(colResetUuid)).append("</th>\n");
+        sb.append("          <th>").append(escapeHtml(colResetAccount)).append("</th>\n");
+        sb.append("          <th>").append(escapeHtml(colResetQq)).append("</th>\n");
+        sb.append("          <th>").append(escapeHtml(colResetMc)).append("</th>\n");
+        sb.append("          <th>").append(escapeHtml(colResetStatus)).append("</th>\n");
+        sb.append("          <th>").append(escapeHtml(colResetTime)).append("</th>\n");
+        sb.append("          <th>").append(escapeHtml(settingAdminVerify)).append("</th>\n");
+        sb.append("        </tr>\n");
+        sb.append("      </thead>\n");
+        sb.append("      <tbody></tbody>\n");
+        sb.append("    </table>\n");
+        sb.append("  </div>\n");
         sb.append("</div>\n");
         sb.append("<div id=\"toast\" class=\"toast\"></div>\n");
         sb.append("<script>\n");
@@ -668,6 +822,30 @@ public final class WebAdminServer {
         sb.append("    tbody.appendChild(tr);\n");
         sb.append("  }\n");
         sb.append("}\n\n");
+        sb.append("async function loadResets(){\n");
+        sb.append("  const res = await fetch('/api/resets');\n");
+        sb.append("  const data = await res.json();\n");
+        sb.append("  const tbody = document.querySelector('#resets tbody');\n");
+        sb.append("  tbody.innerHTML = '';\n");
+        sb.append("  for(const r of data.requests){\n");
+        sb.append("    const tr = document.createElement('tr');\n");
+        sb.append("    const canAct = (r.status === 'PENDING');\n");
+        sb.append("    const actions = canAct ?\n");
+        sb.append("      '<button class=\\\"minecraft-button\\\" onclick=\\\"decideReset(\\'' + r.uuid + '\\', true)\\\">" + escapeHtml(actionResetApprove) + "</button>' +\n");
+        sb.append("      ' ' +\n");
+        sb.append("      '<button class=\\\"minecraft-button\\\" onclick=\\\"decideReset(\\'' + r.uuid + '\\', false)\\\">" + escapeHtml(actionResetReject) + "</button>'\n");
+        sb.append("      : r.status;\n");
+        sb.append("    tr.innerHTML =\n");
+        sb.append("      '<td>' + r.uuid + '</td>' +\n");
+        sb.append("      '<td>' + (r.account || '-') + '</td>' +\n");
+        sb.append("      '<td>' + (r.qq || '-') + '</td>' +\n");
+        sb.append("      '<td>' + (r.mcName || '-') + '</td>' +\n");
+        sb.append("      '<td>' + (r.status || '-') + '</td>' +\n");
+        sb.append("      '<td>' + fmtTime(r.createdAt) + '</td>' +\n");
+        sb.append("      '<td>' + actions + '</td>';\n");
+        sb.append("    tbody.appendChild(tr);\n");
+        sb.append("  }\n");
+        sb.append("}\n\n");
         sb.append("async function setApproval(uuid, approved){\n");
         sb.append("  const data = new URLSearchParams();\n");
         sb.append("  data.set('uuid', uuid);\n");
@@ -676,6 +854,15 @@ public final class WebAdminServer {
         sb.append("  const json = await res.json();\n");
         sb.append("  if(json.ok){ toast(approved ? 'Approved' : 'Unapproved', 'ok'); } else { toast('Failed', 'err'); }\n");
         sb.append("  await loadUsers();\n");
+        sb.append("}\n\n");
+        sb.append("async function decideReset(uuid, approved){\n");
+        sb.append("  const data = new URLSearchParams();\n");
+        sb.append("  data.set('uuid', uuid);\n");
+        sb.append("  data.set('action', approved ? 'approve' : 'reject');\n");
+        sb.append("  const res = await fetch('/api/reset-decision', {method:'POST', body:data});\n");
+        sb.append("  const json = await res.json();\n");
+        sb.append("  if(json.ok){ toast(approved ? 'Approved' : 'Rejected', 'ok'); } else { toast('Failed', 'err'); }\n");
+        sb.append("  await loadResets();\n");
         sb.append("}\n\n");
         sb.append("function bindAutoSave(id){\n");
         sb.append("  const el = document.getElementById(id);\n");
@@ -713,8 +900,8 @@ public final class WebAdminServer {
         sb.append("    state.page += 1; loadUsers();\n");
         sb.append("  });\n");
         sb.append("}\n");
-        sb.append("loadConfig().then(loadUsers);\n");
-        sb.append("setInterval(loadUsers, 5000);\n");
+        sb.append("loadConfig().then(() => { loadUsers(); loadResets(); });\n");
+        sb.append("setInterval(() => { loadUsers(); loadResets(); }, 5000);\n");
         sb.append("</script>\n");
         sb.append("</body>\n");
         sb.append("</html>\n");

@@ -1,6 +1,7 @@
 package CNM.dwgx.l2111pageverify;
 
 import org.bukkit.Bukkit;
+import java.util.UUID;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
@@ -10,6 +11,7 @@ public final class VerifyModuleManager {
     private final L2111pageloginverify plugin;
     private LogsStore logsStore;
     private UserStore userStore;
+    private ResetRequestStore resetStore;
     private VerificationManager verificationManager;
     private VerificationBookService bookService;
     private WebAdminServer webAdminServer;
@@ -28,29 +30,32 @@ public final class VerifyModuleManager {
         userStore = new UserStore(plugin, logsStore);
         userStore.load();
 
-        verificationManager = new VerificationManager();
-        bookService = new VerificationBookService(plugin, verificationManager, userStore);
+        resetStore = new ResetRequestStore(plugin);
+        resetStore.load();
 
-        var listener = new VerificationListener(plugin, userStore, verificationManager, bookService);
+        verificationManager = new VerificationManager();
+        bookService = new VerificationBookService(plugin, verificationManager, userStore, resetStore);
+
+        var listener = new VerificationListener(plugin, userStore, resetStore, verificationManager, bookService);
         Bukkit.getPluginManager().registerEvents(listener, plugin);
 
         enforcerTask = Bukkit.getScheduler().runTaskTimer(
                 plugin,
-                new VerificationEnforcer(plugin, userStore, verificationManager, bookService),
+                new VerificationEnforcer(plugin, userStore, resetStore, verificationManager, bookService),
                 20L,
                 10L
         );
 
         PluginCommand command = plugin.getCommand("dwgxverify");
         if (command != null) {
-            VerifyCommand executor = new VerifyCommand(plugin, userStore, verificationManager, bookService);
+            VerifyCommand executor = new VerifyCommand(plugin, userStore, resetStore, verificationManager, bookService);
             command.setExecutor(executor);
             command.setTabCompleter(executor);
         } else {
             plugin.getLogger().warning("Command dwgxverify not found in plugin.yml.");
         }
 
-        webAdminServer = new WebAdminServer(plugin, userStore);
+        webAdminServer = new WebAdminServer(plugin, userStore, resetStore);
         webAdminServer.start();
     }
 
@@ -66,10 +71,17 @@ public final class VerifyModuleManager {
         if (userStore != null) {
             userStore.save();
         }
+        if (resetStore != null) {
+            resetStore.save();
+        }
     }
 
     public UserStore getUserStore() {
         return userStore;
+    }
+
+    public ResetRequestStore getResetStore() {
+        return resetStore;
     }
 
     public VerificationManager getVerificationManager() {
@@ -90,6 +102,7 @@ public final class VerifyModuleManager {
         bookService.purgeVerificationBooks(player.getInventory(), player.getUniqueId());
         bookService.purgeVerificationBooksLater(player);
         userStore.tryRestorePendingItem(player, true);
+        restoreFlight(player);
         refreshVisibility();
     }
 
@@ -109,6 +122,46 @@ public final class VerifyModuleManager {
             }
         }
         refreshVisibility();
+    }
+
+    public void lockPlayerForReset(UUID uuid, String decidedBy) {
+        if (uuid == null || verificationManager == null || userStore == null || bookService == null) {
+            return;
+        }
+        userStore.removeUser(uuid, "reset-approved");
+        verificationManager.markUnverified(uuid);
+        verificationManager.setSession(uuid, VerificationManager.SessionType.REGISTER);
+        verificationManager.setNotice(uuid, plugin.message("open-reset-book"), NoticeType.INFO);
+        if (logsStore != null) {
+            logsStore.appendAction(uuid, "reset-approved", "by=" + (decidedBy == null ? "" : decidedBy));
+        }
+        org.bukkit.entity.Player player = org.bukkit.Bukkit.getPlayer(uuid);
+        if (player != null && player.isOnline()) {
+            bookService.giveBook(player, VerificationManager.SessionType.REGISTER,
+                    verificationManager.getNotice(uuid), verificationManager.getNoticeType(uuid));
+            player.sendMessage(plugin.message("open-reset-book"));
+        }
+        refreshVisibility();
+    }
+
+    private void restoreFlight(Player player) {
+        if (player == null || verificationManager == null) {
+            return;
+        }
+        if (player.getGameMode() == org.bukkit.GameMode.CREATIVE
+                || player.getGameMode() == org.bukkit.GameMode.SPECTATOR) {
+            return;
+        }
+        Boolean prevAllow = verificationManager.getPrevAllowFlight(player.getUniqueId());
+        Boolean prevFlying = verificationManager.getPrevFlying(player.getUniqueId());
+        if (prevAllow == null || prevFlying == null) {
+            // Fallback: ensure survival players don't keep flight after verify.
+            player.setAllowFlight(false);
+            player.setFlying(false);
+            return;
+        }
+        player.setAllowFlight(prevAllow);
+        player.setFlying(prevFlying && prevAllow);
     }
 
     public void refreshVisibility() {
@@ -148,6 +201,7 @@ public final class VerifyModuleManager {
         ensureWebText("subtitle", "l2111pageloginverify Web");
         ensureWebText("section-users", "Users");
         ensureWebText("section-settings", "Settings");
+        ensureWebText("section-resets", "Reset Requests");
         ensureWebText("column-uuid", "UUID");
         ensureWebText("column-name", "Minecraft Name");
         ensureWebText("column-avatar", "Avatar");
@@ -157,6 +211,12 @@ public final class VerifyModuleManager {
         ensureWebText("column-register", "Registered");
         ensureWebText("column-login", "Last Login");
         ensureWebText("column-pending", "Pending Item");
+        ensureWebText("reset-column-uuid", "UUID");
+        ensureWebText("reset-column-account", "Account");
+        ensureWebText("reset-column-qq", "QQ");
+        ensureWebText("reset-column-mc", "Minecraft Name");
+        ensureWebText("reset-column-status", "Status");
+        ensureWebText("reset-column-time", "Created");
         ensureWebText("setting-enabled", "Verification");
         ensureWebText("setting-encryption", "Encryption");
         ensureWebText("setting-chat", "Chat Before Verify");
@@ -167,6 +227,8 @@ public final class VerifyModuleManager {
         ensureWebText("status-on", "ON");
         ensureWebText("status-off", "OFF");
         ensureWebText("action-unapprove", "Unapprove");
+        ensureWebText("action-reset-approve", "Approve");
+        ensureWebText("action-reset-reject", "Reject");
     }
 
     private void ensureWebText(String key, String fallback) {

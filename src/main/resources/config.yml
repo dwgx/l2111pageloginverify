@@ -12,6 +12,10 @@ hard-force-open: false
 allow-flight-while-unverified: true
 # Show block title before verification
 show-block-title: true
+# Block title timings (milliseconds)
+title-fade-in-ms: 250
+title-stay-ms: 8000
+title-fade-out-ms: 500
 # Hide unverified players from others
 hide-unverified: true
 # Log pending item store/restore in console
@@ -28,7 +32,7 @@ security:
   attempt-window-seconds: 60
   lock-seconds: 30
   # Kick if not verified within this time (0 to disable)
-  verify-timeout-seconds: 30
+  verify-timeout-seconds: 60
   # Password hashing cost
   pbkdf2-iterations: 60000
 
@@ -37,6 +41,8 @@ web:
   bind: "127.0.0.1"
   port: 1337
   local-only: true
+  threads: 4
+  max-body-bytes: 16384
   auth:
     enabled: true
     username: "admin"
@@ -46,6 +52,7 @@ web:
     subtitle: "l2111pageloginverify Web"
     section-users: "Users"
     section-settings: "Settings"
+    section-resets: "Reset Requests"
     column-uuid: "UUID"
     column-name: "Minecraft Name"
     column-avatar: "Avatar"
@@ -55,6 +62,12 @@ web:
     column-register: "Registered"
     column-login: "Last Login"
     column-pending: "Pending Item"
+    reset-column-uuid: "UUID"
+    reset-column-account: "Account"
+    reset-column-qq: "QQ"
+    reset-column-mc: "Minecraft Name"
+    reset-column-status: "Status"
+    reset-column-time: "Created"
     setting-enabled: "Verification"
     setting-encryption: "Encryption"
     setting-chat: "Chat Before Verify"
@@ -67,6 +80,8 @@ web:
     status-off: "OFF"
     action-approve: "Approve"
     action-unapprove: "Unapprove"
+    action-reset-approve: "Approve"
+    action-reset-reject: "Reject"
     status-approved: "Approved"
     status-pending: "Pending"
 
@@ -75,6 +90,7 @@ messages:
   online-mode-required: "§c服务器未开启正版验证 (online-mode=true)，无法进入。"
   open-login-book: "§8请打开验证书本，在第2页填写账号/密码并点击“签名”。"
   open-register-book: "§8请打开验证书本，在第2页填写账号/密码/确认并点击“签名”。"
+  open-reset-book: "§8请打开验证书本，在第2页填写新密码并点击“签名”。"
   login-success: "§b登录成功，已解锁操作。"
   login-failed: "§c登录失败：账号或密码错误。"
   register-success: "§b注册成功，已解锁操作。"
@@ -112,6 +128,19 @@ messages:
   approve-success: "§a已通过审核。"
   unapprove-success: "§e已取消审核。"
   approve-failed: "§c审核失败，未找到该玩家。"
+  usage-reset: "/dwgxverify reset <approve|reject> <player|uuid>"
+  reset-approve-success: "§a已通过密码重置请求。"
+  reset-reject-success: "§e已拒绝密码重置请求。"
+  reset-approve-failed: "§c处理失败，未找到该请求。"
+  reset-request-submitted: "§a已提交密码重置请求，请等待管理员审核。"
+  reset-request-failed: "§c提交失败，请稍后再试。"
+  verify-timeout-flag: "§7你上次验证太慢了，难道你是机器人吗？"
+  reset-no-account: "§c未找到你的账号，无法提交重置请求。"
+  reset-must-agree: "§c请先同意服务器密码规则后再提交。"
+  reset-account-mismatch: "§c账号不匹配，无法重置密码。"
+  reset-success: "§a密码已重置，请重新登录。"
+  reset-rejected-broadcast: "§c%player% 很遗憾，您的重置密码请求已被婉拒。"
+  reset-rejected-line: "§c重置请求已被婉拒"
   player-only: "§e该指令只能由玩家执行。"
   sound-set: "§a音效已设置：%sound%  音量 %vol%  音高 %pitch%。"
   hide-on: "§a未验证玩家已隐藏。"
@@ -131,12 +160,13 @@ sound:
 logs:
   max-login: 300
   max-pending: 300
+  max-actions: 300
 
 book:
   item-name: "§b验证书本"
   title: "§8§l✦ §0验证书本 §8§l✦"
   login-guide:
-    - "§0模式: §6登录 ᗜᴗᗜ"
+    - "§0模式: §0登录 ᗜᴗᗜ"
     - ""
     - "§8需要填写内容:"
     - "§0- 账号"
@@ -144,7 +174,7 @@ book:
     - ""
     - "§6➤ 请翻到第2页填写"
   register-guide:
-    - "§0模式: §6注册 ᗜᴗᗜ"
+    - "§0模式: §0注册 ᗜᴗᗜ"
     - ""
     - "§8需要填写内容:"
     - "§0- 账号"
@@ -181,3 +211,26 @@ book:
   log-empty: "§8暂无记录"
   log-color-info: "§8"
   log-color-error: "§c"
+  reset-page:
+    - "§0忘记密码 / 重置"
+    - ""
+    - "§8请填写以下信息:"
+    - "§0QQ:"
+    - ""
+    - "§0正版昵称:"
+    - ""
+    - "§8守则在第5页"
+    - "§0同意:"
+    - "§8(填: 是 / 同意 / agree)"
+    - ""
+    - "§6➤ 签名提交重置请求"
+  rules-page:
+    - "§0服务器用户守则"
+    - ""
+    - "§8文明交流，尊重他人"
+    - "§8账号仅限本人使用"
+    - "§8禁止外挂/脚本/自动化"
+    - "§8禁止破坏服务器或他人数据"
+    - "§8账号借用游玩此服务器"
+    - "§8以及危害服务器安全等行为"
+    - "§8均视为作弊，banned 处理"

@@ -47,14 +47,16 @@ public final class VerificationListener implements Listener {
 
     private final L2111pageloginverify plugin;
     private final UserStore userStore;
+    private final ResetRequestStore resetStore;
     private final VerificationManager verificationManager;
     private final VerificationBookService bookService;
     private final java.util.Map<UUID, AttemptState> attempts = new java.util.HashMap<>();
 
-    public VerificationListener(L2111pageloginverify plugin, UserStore userStore, VerificationManager verificationManager,
-                                VerificationBookService bookService) {
+    public VerificationListener(L2111pageloginverify plugin, UserStore userStore, ResetRequestStore resetStore,
+                                VerificationManager verificationManager, VerificationBookService bookService) {
         this.plugin = plugin;
         this.userStore = userStore;
+        this.resetStore = resetStore;
         this.verificationManager = verificationManager;
         this.bookService = bookService;
     }
@@ -95,8 +97,28 @@ public final class VerificationListener implements Listener {
         }
 
         scheduleVerifyTimeoutKick(player);
+        checkResetRejectionNotice(player);
+        if (verificationManager.consumeTimedOut(uuid)) {
+            player.sendMessage(plugin.message("verify-timeout-flag"));
+        }
 
         if (userStore.hasUser(uuid)) {
+            if (resetStore != null && resetStore.isApproved(uuid)) {
+                verificationManager.setSession(uuid, VerificationManager.SessionType.REGISTER);
+                verificationManager.setNotice(uuid, plugin.message("open-reset-book"), NoticeType.INFO);
+                scheduleGiveBook(player, VerificationManager.SessionType.REGISTER);
+                player.sendMessage(plugin.message("open-reset-book"));
+                plugin.refreshVisibility();
+                return;
+            }
+            if (plugin.isAdminVerifyEnabled() && !userStore.isApproved(uuid)) {
+                verificationManager.setSession(uuid, VerificationManager.SessionType.LOGIN);
+                verificationManager.setNotice(uuid, plugin.message("admin-verify-required"), NoticeType.ERROR);
+                scheduleGiveBook(player, VerificationManager.SessionType.LOGIN);
+                player.sendMessage(plugin.message("admin-verify-required"));
+                plugin.refreshVisibility();
+                return;
+            }
             verificationManager.setSession(uuid, VerificationManager.SessionType.LOGIN);
             verificationManager.setNotice(uuid, plugin.message("open-login-book"), NoticeType.INFO);
             scheduleGiveBook(player, VerificationManager.SessionType.LOGIN);
@@ -156,10 +178,20 @@ public final class VerificationListener implements Listener {
             return;
         }
 
+        // Always cancel the sign action to prevent a written book from staying in inventory.
+        event.setCancelled(true);
+
         var newMeta = event.getNewBookMeta();
         bookService.tagVerificationMeta(newMeta, uuid, session);
         event.setNewBookMeta(newMeta);
-        InputData input = parseInput(getPageStrings(newMeta));
+        List<String> pages = getPageStrings(newMeta);
+        ResetInput resetInput = parseResetInput(pages);
+        boolean resetApproved = resetStore != null && resetStore.isApproved(uuid);
+        if (!resetApproved && resetInput != null && resetInput.valid()) {
+            handleResetRequest(player, resetInput, session);
+            return;
+        }
+        InputData input = parseInput(pages);
         if (session == VerificationManager.SessionType.LOGIN) {
             handleLogin(player, input);
         } else {
@@ -442,14 +474,20 @@ public final class VerificationListener implements Listener {
         if (!plugin.getConfig().getBoolean("show-block-title", true)) {
             return;
         }
+        if (!verificationManager.markTitleShown(player.getUniqueId())) {
+            return;
+        }
         String title = plugin.message("blocked-title");
         String sub = plugin.message("blocked-subtitle");
         net.kyori.adventure.text.Component titleComp = net.kyori.adventure.text.Component.text(title);
         net.kyori.adventure.text.Component subComp = net.kyori.adventure.text.Component.text(sub);
+        long fadeIn = plugin.getConfig().getLong("title-fade-in-ms", 250L);
+        long stay = plugin.getConfig().getLong("title-stay-ms", 8000L);
+        long fadeOut = plugin.getConfig().getLong("title-fade-out-ms", 500L);
         net.kyori.adventure.title.Title.Times times = net.kyori.adventure.title.Title.Times.times(
-                java.time.Duration.ofMillis(250),
-                java.time.Duration.ofMillis(1500),
-                java.time.Duration.ofMillis(500)
+                java.time.Duration.ofMillis(Math.max(0L, fadeIn)),
+                java.time.Duration.ofMillis(Math.max(0L, stay)),
+                java.time.Duration.ofMillis(Math.max(0L, fadeOut))
         );
         player.showTitle(net.kyori.adventure.title.Title.title(titleComp, subComp, times));
     }
@@ -465,9 +503,11 @@ public final class VerificationListener implements Listener {
             plugin.getLogger().warning("Invalid sound in config: " + soundName);
         }
 
-        String action = plugin.message("success-actionbar").replace("%player%", player.getName());
-        var legacy = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacySection();
-        player.sendActionBar(legacy.deserialize(action));
+        String broadcast = plugin.message("broadcast-success").replace("%player%", player.getName());
+        if (broadcast != null && !broadcast.isBlank()) {
+            var legacy = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacySection();
+            org.bukkit.Bukkit.broadcast(legacy.deserialize(broadcast));
+        }
     }
 
     private org.bukkit.Sound resolveSound(String raw) {
@@ -582,6 +622,8 @@ public final class VerificationListener implements Listener {
             registerIp = player.getAddress().getAddress().getHostAddress();
         }
 
+        boolean resetApprovedRegister = resetStore != null && resetStore.isApproved(player.getUniqueId());
+
         boolean registered = userStore.register(
                 player.getUniqueId(),
                 account,
@@ -598,6 +640,10 @@ public final class VerificationListener implements Listener {
             player.sendMessage(plugin.message("register-failed").replace("%reason%", plugin.message("register-already")));
             scheduleGiveBook(player, VerificationManager.SessionType.REGISTER);
             return;
+        }
+
+        if (resetApprovedRegister && resetStore != null) {
+            resetStore.clear(player.getUniqueId());
         }
 
         if (plugin.isAdminVerifyEnabled()) {
@@ -676,7 +722,7 @@ public final class VerificationListener implements Listener {
     }
 
     private void scheduleVerifyTimeoutKick(Player player) {
-        int timeoutSeconds = plugin.getConfig().getInt("security.verify-timeout-seconds", 30);
+        int timeoutSeconds = plugin.getConfig().getInt("security.verify-timeout-seconds", 60);
         if (timeoutSeconds <= 0) {
             return;
         }
@@ -689,9 +735,60 @@ public final class VerificationListener implements Listener {
                 return;
             }
             if (!verificationManager.isVerified(player.getUniqueId())) {
+                verificationManager.markTimedOut(player.getUniqueId());
                 player.kick(net.kyori.adventure.text.Component.text(plugin.message("verify-timeout-kick")));
             }
         }, delayTicks);
+    }
+    private void handleResetRequest(Player player, ResetInput input, VerificationManager.SessionType session) {
+        UUID uuid = player.getUniqueId();
+        if (!userStore.hasUser(uuid)) {
+            String msg = plugin.message("reset-no-account");
+            verificationManager.setNotice(uuid, msg, NoticeType.ERROR);
+            player.sendMessage(msg);
+            scheduleGiveBook(player, VerificationManager.SessionType.REGISTER);
+            return;
+        }
+        if (!input.agreed()) {
+            String msg = plugin.message("reset-must-agree");
+            verificationManager.setNotice(uuid, msg, NoticeType.ERROR);
+            player.sendMessage(msg);
+            scheduleGiveBook(player, session);
+            return;
+        }
+        String account = userStore.getUser(uuid).account();
+        boolean ok = resetStore != null && resetStore.submit(
+                uuid,
+                account,
+                input.qq(),
+                input.minecraftName(),
+                plugin.getDefaultPasswordMode()
+        );
+        if (ok) {
+            player.sendMessage(plugin.message("reset-request-submitted"));
+            userStore.logAction(uuid, "reset-request", "account=" + account);
+        } else {
+            player.sendMessage(plugin.message("reset-request-failed"));
+            userStore.logAction(uuid, "reset-request-failed", "account=" + account);
+        }
+        scheduleGiveBook(player, VerificationManager.SessionType.LOGIN);
+    }
+
+
+    private void checkResetRejectionNotice(Player player) {
+        if (resetStore == null) {
+            return;
+        }
+        ResetRequestStore.ResetRequest req = resetStore.get(player.getUniqueId());
+        if (req == null || req.status() != ResetRequestStore.Status.REJECTED || req.notified()) {
+            return;
+        }
+        String msg = plugin.message("reset-rejected-broadcast").replace("%player%", player.getName());
+        if (msg != null && !msg.isBlank()) {
+            var legacy = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacySection();
+            org.bukkit.Bukkit.broadcast(legacy.deserialize(msg));
+        }
+        resetStore.markNotified(player.getUniqueId());
     }
 
     private boolean isInputTooLong(Player player, String account, String password, String confirm) {
@@ -811,6 +908,9 @@ public final class VerificationListener implements Listener {
             }
 
             if (pendingKey != null) {
+                if (isHintLine(line) || looksLikeKeyLine(line)) {
+                    continue;
+                }
                 switch (pendingKey) {
                     case ACCOUNT -> account = line;
                     case PASSWORD -> password = line;
@@ -825,6 +925,60 @@ public final class VerificationListener implements Listener {
         if (password != null) password = password.trim();
         if (confirm != null) confirm = confirm.trim();
         return new InputData(account, password, confirm);
+    }
+
+    private ResetInput parseResetInput(List<String> pages) {
+        if (pages == null || pages.size() < 4) {
+            return null;
+        }
+        String page = pages.get(3);
+        List<String> lines = extractLinesFromPage(page);
+        String qq = null;
+        String mcName = null;
+        boolean agree = false;
+        ResetKey pendingKey = null;
+
+        for (String line : lines) {
+            String[] kv = splitKeyValue(line);
+            if (kv != null) {
+                ResetKey key = parseResetKey(kv[0]);
+                if (key == null) {
+                    continue;
+                }
+                String value = kv[1];
+                if (value.isEmpty()) {
+                    pendingKey = key;
+                    continue;
+                }
+                switch (key) {
+                    case QQ -> qq = value;
+                    case MCNAME -> mcName = value;
+                    case AGREE -> agree = isAgreeValue(value);
+                }
+                pendingKey = null;
+                continue;
+            }
+
+            ResetKey inlineKey = looksLikeKeyLine(line) ? parseResetKey(line) : null;
+            if (inlineKey != null) {
+                pendingKey = inlineKey;
+                continue;
+            }
+            if (pendingKey != null) {
+                if (isHintLine(line) || looksLikeKeyLine(line)) {
+                    continue;
+                }
+                switch (pendingKey) {
+                    case QQ -> qq = line;
+                    case MCNAME -> mcName = line;
+                    case AGREE -> agree = isAgreeValue(line);
+                }
+                pendingKey = null;
+            }
+        }
+        if (qq != null) qq = qq.trim();
+        if (mcName != null) mcName = mcName.trim();
+        return new ResetInput(qq, mcName, agree);
     }
 
     private List<String> extractLinesFromPage(String page) {
@@ -862,6 +1016,26 @@ public final class VerificationListener implements Listener {
             return "";
         }
         return input.replaceAll("(?i)\\u00A7[0-9A-FK-OR]", "");
+    }
+
+    private boolean looksLikeKeyLine(String line) {
+        if (line == null) {
+            return false;
+        }
+        String s = line.trim();
+        return s.endsWith(":") || s.endsWith("\uFF1A") || s.endsWith("=");
+    }
+
+    private boolean isHintLine(String line) {
+        if (line == null) {
+            return false;
+        }
+        String s = line.trim();
+        return s.startsWith("(")
+                || s.startsWith("\uFF08")
+                || s.startsWith("\u586B")
+                || s.startsWith("\u27A4")
+                || s.startsWith("\u5B88\u5219");
     }
 
     private String[] splitKeyValue(String line) {
@@ -910,6 +1084,40 @@ public final class VerificationListener implements Listener {
         }
         return null;
     }
+    private boolean isAgreeValue(String value) {
+        if (value == null) {
+            return false;
+        }
+        String v = value.trim().toLowerCase(Locale.ROOT);
+        return "是".equals(v)
+                || "同意".equals(v)
+                || "agree".equals(v)
+                || "yes".equals(v)
+                || "y".equals(v);
+    }
+
+    private ResetKey parseResetKey(String rawKey) {
+        if (rawKey == null) {
+            return null;
+        }
+        String key = rawKey.trim().toLowerCase(Locale.ROOT);
+        if (key.isEmpty()) {
+            return null;
+        }
+        if (key.contains("qq")) {
+            return ResetKey.QQ;
+        }
+        if (key.contains("正版") || key.contains("昵称") || key.contains("mc") || key.contains("minecraft")) {
+            return ResetKey.MCNAME;
+        }
+        if (key.contains("同意") || key.contains("agree")) {
+            return ResetKey.AGREE;
+        }
+        return null;
+    }
+
+
+
 
     private record InputData(String account, String password, String confirm) {
     }
@@ -918,5 +1126,19 @@ public final class VerificationListener implements Listener {
         ACCOUNT,
         PASSWORD,
         CONFIRM
+    }
+
+    private record ResetInput(String qq, String minecraftName, boolean agreed) {
+        boolean valid() {
+            return qq != null && !qq.isBlank()
+                    && minecraftName != null && !minecraftName.isBlank()
+                    && agreed;
+        }
+    }
+
+    private enum ResetKey {
+        QQ,
+        MCNAME,
+        AGREE
     }
 }

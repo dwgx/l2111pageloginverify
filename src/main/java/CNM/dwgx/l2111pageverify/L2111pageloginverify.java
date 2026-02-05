@@ -1,6 +1,7 @@
 package CNM.dwgx.l2111pageverify;
 
 import java.io.File;
+import java.util.UUID;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -81,6 +82,10 @@ public final class L2111pageloginverify extends JavaPlugin {
         return new File(getDataFolder(), "logs.yml");
     }
 
+    public File getResetFile() {
+        return new File(getDataFolder(), "resets.yml");
+    }
+
     public VerificationBookService getBookService() {
         return moduleManager != null ? moduleManager.getBookService() : null;
     }
@@ -111,6 +116,12 @@ public final class L2111pageloginverify extends JavaPlugin {
     public void lockPlayerAfterUnapproval(Player player) {
         if (moduleManager != null) {
             moduleManager.lockPlayerAfterUnapproval(player);
+        }
+    }
+
+    public void lockPlayerForReset(UUID uuid, String decidedBy) {
+        if (moduleManager != null) {
+            moduleManager.lockPlayerForReset(uuid, decidedBy);
         }
     }
 

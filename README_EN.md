@@ -1,17 +1,18 @@
 ﻿# l2111pageloginverify
 
-A Paper 1.21.11 login/registration verification plugin using a server-issued verification book.
+Paper 1.21.11 login/registration verification plugin using a server-issued verification book.
 
 ## Features
 - Register/login by signing the verification book
+- Password reset requests with admin approval (forces re-register)
+- Admin verification mode (unapproved users stay locked)
 - Full action block before verification (movement, interaction, chat, commands, inventory, damage, etc.)
 - Safe-store items when inventory is full, auto-restore after verification (keeps NBT/enchant/durability)
 - Option to hide unverified players
-- Success sound + ActionBar message
+- Success sound + broadcast message
 - Book content/colors fully configurable in YAML
 - Login info tracking (IP / time / per-login salt)
 - Separate datasets for encrypted vs plaintext mode (switchable)
-- Login/pending history stored separately in `logs.yml` with rolling limits
 - Security limits: login rate limiting, input length caps, verify timeout kick
 - Built-in local web admin panel (pure Java, no external HTML files)
 
@@ -19,38 +20,46 @@ A Paper 1.21.11 login/registration verification plugin using a server-issued ver
 - `/dwgxverify`
   - Give verification book (login or register depending on record)
 - `/dwgxverify toggle`
-  - Enable/disable verification
 - `/dwgxverify chat <on|off>`
-  - Allow/disallow chat before verification
 - `/dwgxverify sound <Sound> [volume] [pitch]`
-  - Set success sound
 - `/dwgxverify hide <on|off>`
-  - Hide/show unverified players
 - `/dwgxverify encryption <true|false>`
-  - Toggle encryption (true=HASHED / false=PLAINTEXT)
-  - Datasets are stored separately
+- `/dwgxverify adminverify <on|off>`
+- `/dwgxverify approve <player|uuid>`
+- `/dwgxverify unapprove <player|uuid>`
+- `/dwgxverify reset <approve|reject> <player|uuid>`
+
+## Reset Flow
+1. Player fills page 4 (QQ / Minecraft name / agree) and signs
+2. Admin approves in Web or command
+3. Old account is removed and player is locked to re-register
 
 ## Web Panel
-- Enabled by default on `127.0.0.1:1337` (change via `web.bind` / `web.port`)
-- View users and toggle modes from the browser
-- Approve/unapprove users when admin verification is enabled
-- Search + pagination for large servers
-- Optional local-only access (`web.local-only`)
+- Default: `http://127.0.0.1:1337`
+- Users list, search, pagination, approve/unapprove, reset approvals, config toggles
 - Basic Auth via `web.auth.username` / `web.auth.password`
+- Optional local-only access (`web.local-only`)
 
-## Configuration
-See `config.yml`. Common keys:
-- `encryption-enabled`: true/false
-- `log-pending`: log pending store/restore
-- `log-login-info`: log IP/salt updates
-- `book.*`: book content/colors
+## Data Files
+- `users.yml` (`data.hashed` / `data.plain`)
+- `resets.yml`
+- `logs.yml` (login / pending / actions)
 
-## Data (users.yml)
-Stored under separate sections:
-- `data.hashed` for encrypted mode
-- `data.plain` for plaintext mode
-- Register time/IP stay with the user record; historical login/pending events are written to `logs.yml`
+## Config Highlights
+- `admin-verify-enabled`
+- `encryption-enabled`
+- `security.verify-timeout-seconds`
+- `title-fade-in-ms / title-stay-ms / title-fade-out-ms`
+- `web.bind / web.port / web.local-only`
+- `web.auth.*`
+- `logs.max-login / logs.max-pending / logs.max-actions`
+- `book.*`
+
+## Build
+```bash
+./gradlew build
+```
 
 ## Encoding Notes
-- Java source files must be UTF-8 **without BOM** (javac requirement).
-- `config.yml` is saved as UTF-8 **with BOM** for Windows editors.
+- Java source files must be UTF-8 **without BOM**
+- `config.yml` is UTF-8 **with BOM** for Windows editors
