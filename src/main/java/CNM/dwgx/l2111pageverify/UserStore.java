@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Locale;
@@ -285,7 +287,8 @@ public final class UserStore {
             byte[] saltBytes = new byte[16];
             secureRandom.nextBytes(saltBytes);
             salt = Base64.getEncoder().encodeToString(saltBytes);
-            storedPassword = hashPassword(password, saltBytes);
+            int iterations = plugin.getConfig().getInt("security.pbkdf2-iterations", 60000);
+            storedPassword = "pbkdf2$" + iterations + "$" + hashPasswordPbkdf2(password, saltBytes, iterations);
         } else {
             storedPassword = password;
         }
@@ -448,14 +451,33 @@ public final class UserStore {
             return false;
         }
 
-        String hashed = hashPassword(password, saltBytes);
+        String stored = record.password();
+        if (stored.startsWith("pbkdf2$")) {
+            String[] parts = stored.split("\\$", 3);
+            if (parts.length < 3) {
+                return false;
+            }
+            int iterations;
+            try {
+                iterations = Integer.parseInt(parts[1]);
+            } catch (NumberFormatException ex) {
+                return false;
+            }
+            String hashed = hashPasswordPbkdf2(password, saltBytes, iterations);
+            return MessageDigest.isEqual(
+                    parts[2].getBytes(StandardCharsets.UTF_8),
+                    hashed.getBytes(StandardCharsets.UTF_8)
+            );
+        }
+
+        String legacy = hashPasswordLegacy(password, saltBytes);
         return MessageDigest.isEqual(
-                record.password().getBytes(StandardCharsets.UTF_8),
-                hashed.getBytes(StandardCharsets.UTF_8)
+                stored.getBytes(StandardCharsets.UTF_8),
+                legacy.getBytes(StandardCharsets.UTF_8)
         );
     }
 
-    private String hashPassword(String password, byte[] saltBytes) {
+    private String hashPasswordLegacy(String password, byte[] saltBytes) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             digest.update(saltBytes);
@@ -463,6 +485,18 @@ public final class UserStore {
             return Base64.getEncoder().encodeToString(hash);
         } catch (Exception ex) {
             plugin.getLogger().log(Level.SEVERE, "Password hashing failed", ex);
+            return "";
+        }
+    }
+
+    private String hashPasswordPbkdf2(String password, byte[] saltBytes, int iterations) {
+        try {
+            PBEKeySpec spec = new PBEKeySpec(password.toCharArray(), saltBytes, iterations, 256);
+            SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+            byte[] hash = factory.generateSecret(spec).getEncoded();
+            return Base64.getEncoder().encodeToString(hash);
+        } catch (Exception ex) {
+            plugin.getLogger().log(Level.SEVERE, "PBKDF2 hashing failed", ex);
             return "";
         }
     }

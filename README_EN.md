@@ -12,6 +12,7 @@ A Paper 1.21.11 login/registration verification plugin using a server-issued ver
 - Login info tracking (IP / time / per-login salt)
 - Separate datasets for encrypted vs plaintext mode (switchable)
 - Login/pending history stored separately in `logs.yml` with rolling limits
+- Security limits: login rate limiting, input length caps, verify timeout kick
 - Built-in local web admin panel (pure Java, no external HTML files)
 
 ## Commands

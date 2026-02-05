@@ -49,6 +49,7 @@ public final class VerificationListener implements Listener {
     private final UserStore userStore;
     private final VerificationManager verificationManager;
     private final VerificationBookService bookService;
+    private final java.util.Map<UUID, AttemptState> attempts = new java.util.HashMap<>();
 
     public VerificationListener(L2111pageloginverify plugin, UserStore userStore, VerificationManager verificationManager,
                                 VerificationBookService bookService) {
@@ -93,6 +94,8 @@ public final class VerificationListener implements Listener {
             return;
         }
 
+        scheduleVerifyTimeoutKick(player);
+
         if (userStore.hasUser(uuid)) {
             verificationManager.setSession(uuid, VerificationManager.SessionType.LOGIN);
             verificationManager.setNotice(uuid, plugin.message("open-login-book"), NoticeType.INFO);
@@ -112,6 +115,7 @@ public final class VerificationListener implements Listener {
         Player player = event.getPlayer();
         restoreFlight(player);
         verificationManager.clear(player.getUniqueId());
+        cleanupAttempts(player.getUniqueId());
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -485,15 +489,30 @@ public final class VerificationListener implements Listener {
     }
 
     private void handleLogin(Player player, InputData input) {
+        if (isLocked(player)) {
+            scheduleGiveBook(player, VerificationManager.SessionType.LOGIN);
+            return;
+        }
         if (input.account() == null || input.password() == null) {
             verificationManager.setNotice(player.getUniqueId(), plugin.message("format-login"), NoticeType.ERROR);
             player.sendMessage(plugin.message("format-login"));
             scheduleGiveBook(player, VerificationManager.SessionType.LOGIN);
             return;
         }
+        if (isInputTooLong(player, input.account(), input.password(), null)) {
+            scheduleGiveBook(player, VerificationManager.SessionType.LOGIN);
+            return;
+        }
         if (!userStore.verify(player.getUniqueId(), input.account(), input.password())) {
-            verificationManager.setNotice(player.getUniqueId(), plugin.message("login-failed"), NoticeType.ERROR);
-            player.sendMessage(plugin.message("login-failed"));
+            long lockedSeconds = recordFailure(player.getUniqueId());
+            if (lockedSeconds > 0L) {
+                String msg = plugin.message("verify-locked").replace("%seconds%", String.valueOf(lockedSeconds));
+                verificationManager.setNotice(player.getUniqueId(), msg, NoticeType.ERROR);
+                player.sendMessage(msg);
+            } else {
+                verificationManager.setNotice(player.getUniqueId(), plugin.message("login-failed"), NoticeType.ERROR);
+                player.sendMessage(plugin.message("login-failed"));
+            }
             scheduleGiveBook(player, VerificationManager.SessionType.LOGIN);
             return;
         }
@@ -507,6 +526,7 @@ public final class VerificationListener implements Listener {
 
         verificationManager.markVerified(player.getUniqueId());
         verificationManager.clearNotice(player.getUniqueId());
+        attempts.remove(player.getUniqueId());
         player.sendMessage(plugin.message("login-success"));
         playSuccessEffects(player);
         userStore.updateLoginInfo(player);
@@ -521,9 +541,17 @@ public final class VerificationListener implements Listener {
     }
 
     private void handleRegister(Player player, InputData input) {
+        if (isLocked(player)) {
+            scheduleGiveBook(player, VerificationManager.SessionType.REGISTER);
+            return;
+        }
         if (input.account() == null || input.password() == null || input.confirm() == null) {
             verificationManager.setNotice(player.getUniqueId(), plugin.message("format-register"), NoticeType.ERROR);
             player.sendMessage(plugin.message("format-register"));
+            scheduleGiveBook(player, VerificationManager.SessionType.REGISTER);
+            return;
+        }
+        if (isInputTooLong(player, input.account(), input.password(), input.confirm())) {
             scheduleGiveBook(player, VerificationManager.SessionType.REGISTER);
             return;
         }
@@ -574,6 +602,7 @@ public final class VerificationListener implements Listener {
 
         if (plugin.isAdminVerifyEnabled()) {
             verificationManager.clearNotice(player.getUniqueId());
+            attempts.remove(player.getUniqueId());
             player.sendMessage(plugin.message("admin-verify-wait"));
             Bukkit.getScheduler().runTask(plugin, () -> {
                 bookService.removeVerificationBook(player);
@@ -586,6 +615,7 @@ public final class VerificationListener implements Listener {
 
         verificationManager.markVerified(player.getUniqueId());
         verificationManager.clearNotice(player.getUniqueId());
+        attempts.remove(player.getUniqueId());
         player.sendMessage(plugin.message("register-success"));
         playSuccessEffects(player);
         userStore.updateLoginInfo(player);
@@ -643,6 +673,95 @@ public final class VerificationListener implements Listener {
                 }
             }
         }, 10L);
+    }
+
+    private void scheduleVerifyTimeoutKick(Player player) {
+        int timeoutSeconds = plugin.getConfig().getInt("security.verify-timeout-seconds", 30);
+        if (timeoutSeconds <= 0) {
+            return;
+        }
+        long delayTicks = Math.max(1L, timeoutSeconds * 20L);
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!player.isOnline()) {
+                return;
+            }
+            if (!plugin.isVerificationEnabled()) {
+                return;
+            }
+            if (!verificationManager.isVerified(player.getUniqueId())) {
+                player.kick(net.kyori.adventure.text.Component.text(plugin.message("verify-timeout-kick")));
+            }
+        }, delayTicks);
+    }
+
+    private boolean isInputTooLong(Player player, String account, String password, String confirm) {
+        int maxAccount = plugin.getConfig().getInt("security.max-account-length", 32);
+        int maxPassword = plugin.getConfig().getInt("security.max-password-length", 64);
+        boolean tooLong = (account != null && account.length() > maxAccount)
+                || (password != null && password.length() > maxPassword)
+                || (confirm != null && confirm.length() > maxPassword);
+        if (tooLong) {
+            String msg = plugin.message("input-too-long")
+                    .replace("%account%", String.valueOf(maxAccount))
+                    .replace("%password%", String.valueOf(maxPassword));
+            verificationManager.setNotice(player.getUniqueId(), msg, NoticeType.ERROR);
+            player.sendMessage(msg);
+        }
+        return tooLong;
+    }
+
+    private boolean isLocked(Player player) {
+        UUID uuid = player.getUniqueId();
+        AttemptState state = attempts.get(uuid);
+        if (state == null) {
+            return false;
+        }
+        long now = System.currentTimeMillis();
+        if (state.lockedUntil > now) {
+            long seconds = Math.max(1L, (state.lockedUntil - now + 999) / 1000);
+            String msg = plugin.message("verify-locked").replace("%seconds%", String.valueOf(seconds));
+            verificationManager.setNotice(uuid, msg, NoticeType.ERROR);
+            player.sendMessage(msg);
+            return true;
+        }
+        return false;
+    }
+
+    private long recordFailure(UUID uuid) {
+        long now = System.currentTimeMillis();
+        int maxAttempts = plugin.getConfig().getInt("security.max-attempts", 5);
+        long windowMs = plugin.getConfig().getInt("security.attempt-window-seconds", 60) * 1000L;
+        long lockMs = plugin.getConfig().getInt("security.lock-seconds", 30) * 1000L;
+        AttemptState state = attempts.computeIfAbsent(uuid, key -> new AttemptState());
+        if (now - state.windowStart > windowMs) {
+            state.windowStart = now;
+            state.failures = 0;
+        }
+        state.failures++;
+        if (state.failures >= maxAttempts) {
+            state.failures = 0;
+            state.windowStart = now;
+            state.lockedUntil = now + lockMs;
+            return Math.max(1L, lockMs / 1000L);
+        }
+        return 0L;
+    }
+
+    private void cleanupAttempts(UUID uuid) {
+        AttemptState state = attempts.get(uuid);
+        if (state == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (state.lockedUntil <= now) {
+            attempts.remove(uuid);
+        }
+    }
+
+    private static final class AttemptState {
+        int failures;
+        long windowStart = System.currentTimeMillis();
+        long lockedUntil;
     }
 
     private InputData parseInput(List<String> pages) {

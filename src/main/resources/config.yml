@@ -19,6 +19,19 @@ log-pending: true
 # Log login info (IP/salt) updates
 log-login-info: true
 
+security:
+  # Maximum lengths for account/password fields
+  max-account-length: 32
+  max-password-length: 64
+  # Login attempt limits
+  max-attempts: 5
+  attempt-window-seconds: 60
+  lock-seconds: 30
+  # Kick if not verified within this time (0 to disable)
+  verify-timeout-seconds: 30
+  # Password hashing cost
+  pbkdf2-iterations: 60000
+
 web:
   enabled: true
   bind: "127.0.0.1"
@@ -106,6 +119,9 @@ messages:
   pending-stored: "§e背包已满，物品已暂存到服务器，验证后会归还。"
   pending-restored: "§a已归还暂存物品。"
   pending-full: "§e背包仍满，暂存物品未归还，请腾出空位后再试。"
+  verify-locked: "§c尝试次数过多，请等待 %seconds% 秒后再试。"
+  input-too-long: "§c输入过长（账号≤%account% 密码≤%password%）。"
+  verify-timeout-kick: "§c验证超时，请重新进入并完成验证。"
 
 sound:
   success: "ENTITY_PLAYER_LEVELUP"
