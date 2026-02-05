@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿initialized: true
+﻿initialized: true
 enabled: true
 encryption-enabled: true
 admin-verify-enabled: false
@@ -13,7 +13,7 @@ allow-flight-while-unverified: true
 # Show block title before verification
 show-block-title: true
 # Hide unverified players from others
-hide-unverified: false
+hide-unverified: true
 # Log pending item store/restore in console
 log-pending: true
 # Log login info (IP/salt) updates
