@@ -50,6 +50,7 @@ public final class NmsBookOpener {
         return connectionField.get(handle);
     }
 
+    @SuppressWarnings("unchecked")
     private static Object createOpenBookPacket() throws Exception {
         Class<?> packetClass = Class.forName("net.minecraft.network.protocol.game.ClientboundOpenBookPacket");
         Class<?> handClass = Class.forName("net.minecraft.world.InteractionHand");

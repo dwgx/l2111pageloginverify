@@ -52,6 +52,7 @@ public final class WebAdminServer {
         server.createContext("/", new RootHandler());
         server.createContext("/api/users", new UsersHandler());
         server.createContext("/api/config", new ConfigHandler());
+        server.createContext("/api/approve", new ApproveHandler());
         executor = Executors.newCachedThreadPool();
         server.setExecutor(executor);
         server.start();
@@ -153,6 +154,39 @@ public final class WebAdminServer {
         }
     }
 
+    private class ApproveHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!checkAuth(exchange)) {
+                return;
+            }
+            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendText(exchange, 405, "{\"ok\":false}", "application/json");
+                return;
+            }
+            Map<String, String> params = readParams(exchange);
+            String uuidRaw = params.get("uuid");
+            boolean approve = parseBool(params.getOrDefault("approved", "true"));
+            boolean ok = false;
+            if (uuidRaw != null) {
+                try {
+                    UUID uuid = UUID.fromString(uuidRaw);
+                    ok = userStore.setApproved(uuid, approve);
+                    if (ok && approve) {
+                        org.bukkit.entity.Player player = org.bukkit.Bukkit.getPlayer(uuid);
+                        if (player != null) {
+                            plugin.unlockPlayerAfterApproval(player);
+                            player.sendMessage(plugin.message("admin-verify-approved"));
+                        }
+                    }
+                } catch (IllegalArgumentException ex) {
+                    ok = false;
+                }
+            }
+            sendText(exchange, 200, "{\"ok\":" + ok + "}", "application/json");
+        }
+    }
+
     private Map<String, String> readParams(HttpExchange exchange) throws IOException {
         String query = exchange.getRequestURI().getRawQuery();
         String body = "";
@@ -194,6 +228,10 @@ public final class WebAdminServer {
             plugin.saveConfig();
             plugin.refreshVisibility();
         }
+        if (params.containsKey("adminverify")) {
+            boolean enabled = parseBool(params.get("adminverify"));
+            plugin.setAdminVerifyEnabled(enabled);
+        }
         if (params.containsKey("encryption")) {
             boolean enabled = parseBool(params.get("encryption"));
             plugin.setEncryptionEnabled(enabled);
@@ -231,6 +269,7 @@ public final class WebAdminServer {
         boolean enabled = plugin.isVerificationEnabled();
         boolean chat = plugin.isChatAllowedBeforeVerify();
         boolean hide = plugin.getConfig().getBoolean("hide-unverified", false);
+        boolean adminVerify = plugin.isAdminVerifyEnabled();
         boolean encryption = plugin.isEncryptionEnabled();
         String sound = plugin.getConfig().getString("sound.success", "ENTITY_PLAYER_LEVELUP");
         double volume = plugin.getConfig().getDouble("sound.volume", 1.0);
@@ -240,6 +279,7 @@ public final class WebAdminServer {
         sb.append("\"enabled\":").append(enabled).append(',');
         sb.append("\"chat\":").append(chat).append(',');
         sb.append("\"hide\":").append(hide).append(',');
+        sb.append("\"adminverify\":").append(adminVerify).append(',');
         sb.append("\"encryption\":").append(encryption).append(',');
         sb.append("\"sound\":\"").append(escapeJson(sound)).append("\",");
         sb.append("\"volume\":").append(volume).append(',');
@@ -254,7 +294,6 @@ public final class WebAdminServer {
         for (Map.Entry<UUID, UserRecord> entry : userStore.getUsersSnapshot().entrySet()) {
             UserRecord record = entry.getValue();
             UserStore.PendingItem pending = userStore.getPendingItem(entry.getKey());
-            UserStore.PendingLog log = userStore.getPendingLog(entry.getKey());
             StringBuilder sb = new StringBuilder();
             sb.append("{");
             sb.append("\"uuid\":\"").append(record.uuid()).append("\",");
@@ -263,6 +302,8 @@ public final class WebAdminServer {
             sb.append("\"password\":\"").append(escapeJson(nullToEmpty(record.password()))).append("\",");
             sb.append("\"salt\":\"").append(escapeJson(nullToEmpty(record.salt()))).append("\",");
             sb.append("\"registerAt\":").append(record.registeredAt()).append(',');
+            sb.append("\"approved\":").append(record.approved()).append(',');
+            sb.append("\"mode\":\"").append(record.mode().name()).append("\",");
             sb.append("\"lastLoginIp\":\"").append(escapeJson(nullToEmpty(record.lastLoginIp()))).append("\",");
             sb.append("\"lastLoginAt\":").append(record.lastLoginAt()).append(',');
             sb.append("\"lastLoginSalt\":\"").append(escapeJson(nullToEmpty(record.lastLoginSalt()))).append("\",");
@@ -276,15 +317,9 @@ public final class WebAdminServer {
                 sb.append("\"pendingSlot\":-1,");
                 sb.append("\"pendingAmount\":0,");
             }
-            if (log != null && log.stored() != null) {
-                sb.append("\"pendingStoredAt\":").append(log.stored().time()).append(',');
-            } else {
-                sb.append("\"pendingStoredAt\":0,");
-            }
-            if (log != null && log.restored() != null) {
-                sb.append("\"pendingRestoredAt\":").append(log.restored().time());
-            } else {
-                sb.append("\"pendingRestoredAt\":0");
+            // trim trailing comma from pending block
+            if (sb.charAt(sb.length() - 1) == ',') {
+                sb.setLength(sb.length() - 1);
             }
             sb.append("}");
             entries.add(sb.toString());
@@ -321,18 +356,18 @@ public final class WebAdminServer {
         String colRegister = text("column-register", "Register");
         String colLogin = text("column-login", "Last Login");
         String colPending = text("column-pending", "Pending");
-        String colPendingLog = text("column-pending-log", "Pending Log");
         String settingEnabled = text("setting-enabled", "Verification");
         String settingEncryption = text("setting-encryption", "Encryption");
         String settingChat = text("setting-chat", "Chat Before Verify");
+        String settingAdminVerify = text("setting-admin-verify", "Admin Verify");
         String settingHide = text("setting-hide", "Hide Unverified");
         String settingSound = text("setting-sound", "Sound");
         String settingVolume = text("setting-volume", "volume / pitch");
-        String settingSave = text("setting-save", "Save");
         String statusOn = text("status-on", "ON");
         String statusOff = text("status-off", "OFF");
-        String pendingStoredLabel = text("pending-stored-label", "stored");
-        String pendingRestoredLabel = text("pending-restored-label", "restored");
+        String actionApprove = text("action-approve", "Approve");
+        String statusApproved = text("status-approved", "Approved");
+        String statusPending = text("status-pending", "Pending");
         StringBuilder sb = new StringBuilder();
         sb.append("<!DOCTYPE html>\n");
         sb.append("<html>\n");
@@ -350,6 +385,9 @@ public final class WebAdminServer {
         sb.append("label { display: block; margin-bottom: 6px; }\n");
         sb.append("select, input[type=text], input[type=number] { width: 100%; padding: 6px; background: #14151a; color: #e7e7e7; border: 1px solid #3a3a44; border-radius: 4px; }\n");
         sb.append("select:focus, input:focus { outline: 2px solid #5fead2; box-shadow: 0 0 0 2px rgba(95,234,210,0.35); }\n");
+        sb.append(".toast { position: fixed; right: 20px; bottom: 20px; background: #1f2937; color: #e7e7e7; padding: 10px 14px; border-radius: 6px; border: 1px solid #3a3a44; display: none; }\n");
+        sb.append(".toast.ok { border-color: #2c7; }\n");
+        sb.append(".toast.err { border-color: #c33; }\n");
         sb.append(".table { width: 100%; border-collapse: collapse; }\n");
         sb.append(".table th, .table td { border-bottom: 1px solid #333; padding: 8px; font-size: 12px; }\n");
         sb.append(".avatar { width: 32px; height: 32px; image-rendering: pixelated; }\n");
@@ -386,6 +424,13 @@ public final class WebAdminServer {
         sb.append("        </select>\n");
         sb.append("      </div>\n");
         sb.append("      <div>\n");
+        sb.append("        <label>").append(escapeHtml(settingAdminVerify)).append("</label>\n");
+        sb.append("        <select id=\"adminverify\">\n");
+        sb.append("          <option value=\"true\">").append(escapeHtml(statusOn)).append("</option>\n");
+        sb.append("          <option value=\"false\">").append(escapeHtml(statusOff)).append("</option>\n");
+        sb.append("        </select>\n");
+        sb.append("      </div>\n");
+        sb.append("      <div>\n");
         sb.append("        <label>").append(escapeHtml(settingHide)).append("</label>\n");
         sb.append("        <select id=\"hide\">\n");
         sb.append("          <option value=\"true\">").append(escapeHtml(statusOn)).append("</option>\n");
@@ -404,7 +449,6 @@ public final class WebAdminServer {
         sb.append("        </div>\n");
         sb.append("      </div>\n");
         sb.append("    </div>\n");
-        sb.append("    <button class=\"minecraft-button\" id=\"save\">").append(escapeHtml(settingSave)).append("</button>\n");
         sb.append("  </div>\n\n");
         sb.append("  <div class=\"panel\">\n");
         sb.append("    <h3>").append(escapeHtml(sectionUsers)).append("</h3>\n");
@@ -420,7 +464,7 @@ public final class WebAdminServer {
         sb.append("          <th>").append(escapeHtml(colRegister)).append("</th>\n");
         sb.append("          <th>").append(escapeHtml(colLogin)).append("</th>\n");
         sb.append("          <th>").append(escapeHtml(colPending)).append("</th>\n");
-        sb.append("          <th>").append(escapeHtml(colPendingLog)).append("</th>\n");
+        sb.append("          <th>").append(escapeHtml(settingAdminVerify)).append("</th>\n");
         sb.append("        </tr>\n");
         sb.append("      </thead>\n");
         sb.append("      <tbody></tbody>\n");
@@ -434,6 +478,7 @@ public final class WebAdminServer {
         sb.append("  document.getElementById('enabled').value = String(cfg.enabled);\n");
         sb.append("  document.getElementById('chat').value = String(cfg.chat);\n");
         sb.append("  document.getElementById('hide').value = String(cfg.hide);\n");
+        sb.append("  document.getElementById('adminverify').value = String(cfg.adminverify);\n");
         sb.append("  document.getElementById('encryption').value = String(cfg.encryption);\n");
         sb.append("  document.getElementById('sound').value = cfg.sound || '';\n");
         sb.append("  document.getElementById('volume').value = cfg.volume || 1;\n");
@@ -445,11 +490,21 @@ public final class WebAdminServer {
         sb.append("  data.set('chat', document.getElementById('chat').value);\n");
         sb.append("  data.set('hide', document.getElementById('hide').value);\n");
         sb.append("  data.set('encryption', document.getElementById('encryption').value);\n");
+        sb.append("  data.set('adminverify', document.getElementById('adminverify').value);\n");
         sb.append("  data.set('sound', document.getElementById('sound').value);\n");
         sb.append("  data.set('volume', document.getElementById('volume').value);\n");
         sb.append("  data.set('pitch', document.getElementById('pitch').value);\n");
         sb.append("  await fetch('/api/config', {method:'POST', body:data});\n");
+        sb.append("  toast('Saved', 'ok');\n");
         sb.append("  await loadUsers();\n");
+        sb.append("}\n\n");
+        sb.append("function toast(msg, type){\n");
+        sb.append("  const box = document.getElementById('toast');\n");
+        sb.append("  box.className = 'toast ' + (type || 'ok');\n");
+        sb.append("  box.textContent = msg;\n");
+        sb.append("  box.style.display = 'block';\n");
+        sb.append("  clearTimeout(window.__toastTimer);\n");
+        sb.append("  window.__toastTimer = setTimeout(()=>{ box.style.display = 'none'; }, 2000);\n");
         sb.append("}\n\n");
         sb.append("function fmtTime(ts){\n");
         sb.append("  if(!ts || ts<=0) return '-';\n");
@@ -464,24 +519,44 @@ public final class WebAdminServer {
         sb.append("  for(const u of data.users){\n");
         sb.append("    const tr = document.createElement('tr');\n");
         sb.append("    const avatar = 'https://crafatar.com/avatars/' + u.uuid + '?size=32&overlay';\n");
+        sb.append("    const fallback = u.mcName ? ('https://minotar.net/avatar/' + u.mcName + '/32') : '';\n");
+        sb.append("    const keySalt = (u.mode === 'HASHED') ? (u.salt || '-') : (u.lastLoginSalt || '-');\n");
+        sb.append("    const approveCell = u.approved ? '" + escapeHtml(statusApproved) + "' : '<button class=\\\"minecraft-button\\\" onclick=\\\"approveUser(\\'' + u.uuid + '\\')\\\">" + escapeHtml(actionApprove) + "</button>';\n");
         sb.append("    tr.innerHTML =\n");
         sb.append("      '<td>' + u.uuid + '</td>' +\n");
-        sb.append("      '<td><img class=\\\"avatar\\\" src=\\\"' + avatar + '\\\"/></td>' +\n");
+        sb.append("      '<td><img class=\\\"avatar\\\" src=\\\"' + avatar + '\\\" onerror=\\\"this.onerror=null; if(\\'' + fallback + '\\') { this.src=\\'' + fallback + '\\'; }\\\" /></td>' +\n");
         sb.append("      '<td>' + (u.mcName || '-') + '</td>' +\n");
         sb.append("      '<td>' + (u.account || '-') + '</td>' +\n");
         sb.append("      '<td>' + (u.password || '-') + '</td>' +\n");
-        sb.append("      '<td>' + (u.salt || '-') + '</td>' +\n");
+        sb.append("      '<td>' + keySalt + '</td>' +\n");
         sb.append("      '<td>' + fmtTime(u.registerAt) + '</td>' +\n");
         sb.append("      '<td>' + (u.lastLoginIp || '-') + '<br>' + fmtTime(u.lastLoginAt) + '<br>' + (u.lastLoginSalt || '-') + '</td>' +\n");
         sb.append("      '<td>' + (u.pendingType ? (u.pendingType + ' x' + u.pendingAmount + ' @' + u.pendingSlot) : '-') + '</td>' +\n");
-        sb.append("      '<td>" + escapeHtml(pendingStoredLabel) + ": ' + fmtTime(u.pendingStoredAt) + '<br>" + escapeHtml(pendingRestoredLabel) + ": ' + fmtTime(u.pendingRestoredAt) + '</td>';\n");
+        sb.append("      '<td>' + approveCell + '</td>';\n");
         sb.append("    tbody.appendChild(tr);\n");
         sb.append("  }\n");
         sb.append("}\n\n");
-        sb.append("document.getElementById('save').addEventListener('click', saveConfig);\n");
+        sb.append("async function approveUser(uuid){\n");
+        sb.append("  const data = new URLSearchParams();\n");
+        sb.append("  data.set('uuid', uuid);\n");
+        sb.append("  data.set('approved', 'true');\n");
+        sb.append("  const res = await fetch('/api/approve', {method:'POST', body:data});\n");
+        sb.append("  const json = await res.json();\n");
+        sb.append("  if(json.ok){ toast('Approved', 'ok'); } else { toast('Failed', 'err'); }\n");
+        sb.append("  await loadUsers();\n");
+        sb.append("}\n\n");
+        sb.append("function bindAutoSave(id){\n");
+        sb.append("  const el = document.getElementById(id);\n");
+        sb.append("  el.addEventListener('change', debounce(saveConfig, 200));\n");
+        sb.append("}\n");
+        sb.append("function debounce(fn, ms){\n");
+        sb.append("  let t; return function(){ clearTimeout(t); t = setTimeout(fn, ms); };\n");
+        sb.append("}\n");
+        sb.append("['enabled','chat','hide','encryption','adminverify','sound','volume','pitch'].forEach(bindAutoSave);\n");
         sb.append("loadConfig().then(loadUsers);\n");
         sb.append("setInterval(loadUsers, 5000);\n");
         sb.append("</script>\n");
+        sb.append("<div id=\\\"toast\\\" class=\\\"toast\\\"></div>\n");
         sb.append("</body>\n");
         sb.append("</html>\n");
         return sb.toString();

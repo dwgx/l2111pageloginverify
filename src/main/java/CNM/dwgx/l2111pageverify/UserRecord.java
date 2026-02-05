@@ -10,6 +10,8 @@ public record UserRecord(
         PasswordMode mode,
         String minecraftName,
         long registeredAt,
+        String registerIp,
+        boolean approved,
         String lastLoginIp,
         long lastLoginAt,
         String lastLoginSalt

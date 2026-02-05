@@ -189,8 +189,14 @@ public final class VerificationBookService {
         }
 
         String name = plugin.getConfig().getString("book.item-name", "Verify Book");
-        meta.setDisplayName(name);
-        meta.setPages(buildPages(uuid, type, notice, noticeType));
+        var legacy = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacySection();
+        meta.displayName(legacy.deserialize(name));
+        List<String> pages = buildPages(uuid, type, notice, noticeType);
+        List<net.kyori.adventure.text.Component> components = new ArrayList<>(pages.size());
+        for (String page : pages) {
+            components.add(legacy.deserialize(page));
+        }
+        meta.pages(components);
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
         pdc.set(tokenKey, PersistentDataType.STRING, token);
         pdc.set(ownerKey, PersistentDataType.STRING, uuid.toString());

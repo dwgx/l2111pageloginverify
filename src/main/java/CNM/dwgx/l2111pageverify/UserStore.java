@@ -21,17 +21,18 @@ import org.bukkit.inventory.PlayerInventory;
 public final class UserStore {
 
     private final L2111pageloginverify plugin;
+    private final LogsStore logsStore;
     private final SecureRandom secureRandom = new SecureRandom();
     private final Map<UUID, UserRecord> users = new HashMap<>();
     private final Map<String, UUID> accountIndex = new HashMap<>();
     private final Map<UUID, PendingItem> pendingItems = new HashMap<>();
-    private final Map<UUID, PendingLog> pendingLogs = new HashMap<>();
 
     private YamlConfiguration config;
     private String activeSectionKey = "data.hashed";
 
-    public UserStore(L2111pageloginverify plugin) {
+    public UserStore(L2111pageloginverify plugin, LogsStore logsStore) {
         this.plugin = plugin;
+        this.logsStore = logsStore;
     }
 
     public void load() {
@@ -55,7 +56,6 @@ public final class UserStore {
         users.clear();
         accountIndex.clear();
         pendingItems.clear();
-        pendingLogs.clear();
 
         activeSectionKey = sectionKeyForMode(mode);
         ConfigurationSection section = config.getConfigurationSection(activeSectionKey);
@@ -83,11 +83,13 @@ public final class UserStore {
             }
             String mcName = section.getString(key + ".minecraft_name", "");
             long registeredAt = section.getLong(key + ".register.time", 0L);
+            String registerIp = section.getString(key + ".register.ip", "");
+            boolean approved = section.getBoolean(key + ".approved", true);
             String lastIp = section.getString(key + ".last_login.ip", "");
             long lastAt = section.getLong(key + ".last_login.time", 0L);
             String lastSalt = section.getString(key + ".last_login.salt", "");
             UserRecord record = new UserRecord(uuid, account, password, salt, recordMode, mcName, registeredAt,
-                    lastIp, lastAt, lastSalt);
+                    registerIp, approved, lastIp, lastAt, lastSalt);
             users.put(uuid, record);
             if (!account.isEmpty()) {
                 accountIndex.put(account.toLowerCase(Locale.ROOT), uuid);
@@ -112,11 +114,6 @@ public final class UserStore {
                 }
             }
 
-            PendingEvent stored = readPendingEvent(section, key + ".pending_log.stored");
-            PendingEvent restored = readPendingEvent(section, key + ".pending_log.restored");
-            if (stored != null || restored != null) {
-                pendingLogs.put(uuid, new PendingLog(stored, restored));
-            }
         }
 
         String pendingOnlyPath = activeSectionKey + ".pending_only";
@@ -148,11 +145,6 @@ public final class UserStore {
                         plugin.getLogger().warning("Failed to decode pending-only item for " + uuid);
                     }
                 }
-                PendingEvent stored = readPendingEvent(pendingOnly, key + ".pending_log.stored");
-                PendingEvent restored = readPendingEvent(pendingOnly, key + ".pending_log.restored");
-                if (stored != null || restored != null) {
-                    pendingLogs.put(uuid, new PendingLog(stored, restored));
-                }
             }
         }
     }
@@ -183,6 +175,8 @@ public final class UserStore {
             } else {
                 config.set(path + ".register.time", null);
             }
+            config.set(path + ".register.ip", record.registerIp());
+            config.set(path + ".approved", record.approved());
             if (record.lastLoginIp() != null && !record.lastLoginIp().isEmpty()) {
                 config.set(path + ".last_login.ip", record.lastLoginIp());
             } else {
@@ -206,13 +200,6 @@ public final class UserStore {
             } else {
                 config.set(path + ".pending", null);
             }
-            PendingLog log = pendingLogs.get(record.uuid());
-            if (log != null) {
-                writePendingEvent(path + ".pending_log.stored", log.stored());
-                writePendingEvent(path + ".pending_log.restored", log.restored());
-            } else {
-                config.set(path + ".pending_log", null);
-            }
         }
 
         String pendingOnlyPath = activeSectionKey + ".pending_only";
@@ -227,11 +214,6 @@ public final class UserStore {
             String encoded = Base64.getEncoder().encodeToString(pending.item().serializeAsBytes());
             config.set(path + ".bytes", encoded);
             config.set(path + ".slot", pending.slot());
-            PendingLog log = pendingLogs.get(uuid);
-            if (log != null) {
-                writePendingEvent(path + ".pending_log.stored", log.stored());
-                writePendingEvent(path + ".pending_log.restored", log.restored());
-            }
         }
 
         try {
@@ -249,6 +231,38 @@ public final class UserStore {
         return users.get(uuid);
     }
 
+    public boolean isApproved(UUID uuid) {
+        UserRecord record = users.get(uuid);
+        if (record == null) {
+            return false;
+        }
+        return record.approved();
+    }
+
+    public boolean setApproved(UUID uuid, boolean approved) {
+        UserRecord record = users.get(uuid);
+        if (record == null) {
+            return false;
+        }
+        UserRecord updated = new UserRecord(
+                record.uuid(),
+                record.account(),
+                record.password(),
+                record.salt(),
+                record.mode(),
+                record.minecraftName(),
+                record.registeredAt(),
+                record.registerIp(),
+                approved,
+                record.lastLoginIp(),
+                record.lastLoginAt(),
+                record.lastLoginSalt()
+        );
+        users.put(uuid, updated);
+        save();
+        return true;
+    }
+
     public boolean isAccountTaken(String account) {
         if (account == null) {
             return false;
@@ -256,7 +270,7 @@ public final class UserStore {
         return accountIndex.containsKey(account.trim().toLowerCase(Locale.ROOT));
     }
 
-    public boolean register(UUID uuid, String account, String password, PasswordMode mode, String minecraftName) {
+    public boolean register(UUID uuid, String account, String password, PasswordMode mode, String minecraftName, String registerIp, boolean approved) {
         if (users.containsKey(uuid)) {
             return false;
         }
@@ -279,7 +293,7 @@ public final class UserStore {
         long registeredAt = System.currentTimeMillis();
         String mcName = minecraftName != null ? minecraftName : "";
         UserRecord record = new UserRecord(uuid, account.trim(), storedPassword, salt, mode,
-                mcName, registeredAt, "", 0L, "");
+                mcName, registeredAt, registerIp == null ? "" : registerIp, approved, "", 0L, "");
         users.put(uuid, record);
         accountIndex.put(accountKey, uuid);
         save();
@@ -288,10 +302,6 @@ public final class UserStore {
 
     public PendingItem getPendingItem(UUID uuid) {
         return pendingItems.get(uuid);
-    }
-
-    public PendingLog getPendingLog(UUID uuid) {
-        return pendingLogs.get(uuid);
     }
 
     public Map<UUID, UserRecord> getUsersSnapshot() {
@@ -303,7 +313,9 @@ public final class UserStore {
             return;
         }
         pendingItems.put(uuid, new PendingItem(item.clone(), slot));
-        recordPendingLog(uuid, item, slot, true);
+        if (logsStore != null) {
+            logsStore.appendPending(uuid, true, item, slot);
+        }
         save();
     }
 
@@ -340,12 +352,17 @@ public final class UserStore {
                 record.mode(),
                 mcName,
                 record.registeredAt() > 0L ? record.registeredAt() : System.currentTimeMillis(),
+                record.registerIp(),
+                record.approved(),
                 ip,
                 now,
                 loginSalt
         );
         users.put(uuid, updated);
         save();
+        if (logsStore != null) {
+            logsStore.appendLogin(uuid, record.account(), mcName, ip, now, loginSalt, record.mode());
+        }
         if (plugin.getConfig().getBoolean("log-login-info", true)) {
             plugin.getLogger().info("Login info updated for " + player.getName()
                     + " ip=" + (ip.isEmpty() ? "unknown" : ip));
@@ -378,7 +395,9 @@ public final class UserStore {
         }
         if (restored) {
             pendingItems.remove(uuid);
-            recordPendingLog(uuid, item, slot, false);
+            if (logsStore != null) {
+                logsStore.appendPending(uuid, false, item, slot);
+            }
             save();
             if (notify) {
                 player.sendMessage(plugin.message("pending-restored"));
@@ -458,56 +477,6 @@ public final class UserStore {
         return mode == PasswordMode.PLAINTEXT ? "data.plain" : "data.hashed";
     }
 
-    private void recordPendingLog(UUID uuid, ItemStack item, int slot, boolean stored) {
-        if (uuid == null || item == null) {
-            return;
-        }
-        PendingLog current = pendingLogs.get(uuid);
-        PendingEvent event = new PendingEvent(System.currentTimeMillis(), slot,
-                item.getType().name(), item.getAmount());
-        PendingLog updated;
-        if (stored) {
-            updated = new PendingLog(event, current != null ? current.restored() : null);
-        } else {
-            updated = new PendingLog(current != null ? current.stored() : null, event);
-        }
-        pendingLogs.put(uuid, updated);
-    }
-
-    private PendingEvent readPendingEvent(ConfigurationSection section, String path) {
-        if (section == null) {
-            return null;
-        }
-        long time = section.getLong(path + ".time", 0L);
-        int slot = section.getInt(path + ".slot", -1);
-        String type = section.getString(path + ".type", "");
-        int amount = section.getInt(path + ".amount", 0);
-        if (time <= 0L && type.isEmpty() && amount <= 0) {
-            return null;
-        }
-        return new PendingEvent(time, slot, type, amount);
-    }
-
-    private void writePendingEvent(String path, PendingEvent event) {
-        if (config == null) {
-            return;
-        }
-        if (event == null) {
-            config.set(path, null);
-            return;
-        }
-        config.set(path + ".time", event.time());
-        config.set(path + ".slot", event.slot());
-        config.set(path + ".type", event.type());
-        config.set(path + ".amount", event.amount());
-    }
-
     public record PendingItem(ItemStack item, int slot) {
-    }
-
-    public record PendingEvent(long time, int slot, String type, int amount) {
-    }
-
-    public record PendingLog(PendingEvent stored, PendingEvent restored) {
     }
 }

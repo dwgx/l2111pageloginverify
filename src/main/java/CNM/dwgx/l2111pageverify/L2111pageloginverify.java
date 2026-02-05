@@ -1,6 +1,7 @@
 package CNM.dwgx.l2111pageverify;
 
 import java.io.File;
+import java.util.UUID;
 import org.bukkit.Bukkit;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
@@ -8,6 +9,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 public final class L2111pageloginverify extends JavaPlugin {
 
+    private LogsStore logsStore;
     private UserStore userStore;
     private VerificationManager verificationManager;
     private VerificationBookService bookService;
@@ -25,7 +27,10 @@ public final class L2111pageloginverify extends JavaPlugin {
         sanitizeWebText();
         saveConfig();
 
-        userStore = new UserStore(this);
+        logsStore = new LogsStore(this);
+        logsStore.load();
+
+        userStore = new UserStore(this, logsStore);
         userStore.load();
 
         verificationManager = new VerificationManager();
@@ -61,6 +66,9 @@ public final class L2111pageloginverify extends JavaPlugin {
     public void onDisable() {
         if (webAdminServer != null) {
             webAdminServer.stop();
+        }
+        if (logsStore != null) {
+            // Logs are already flushed on each append; no-op.
         }
         if (userStore != null) {
             userStore.save();
@@ -121,8 +129,43 @@ public final class L2111pageloginverify extends JavaPlugin {
         return new File(getDataFolder(), "users.yml");
     }
 
+    public File getLogsFile() {
+        return new File(getDataFolder(), "logs.yml");
+    }
+
     public VerificationBookService getBookService() {
         return bookService;
+    }
+
+    public VerificationManager getVerificationManager() {
+        return verificationManager;
+    }
+
+    public UserStore getUserStore() {
+        return userStore;
+    }
+
+    public boolean isAdminVerifyEnabled() {
+        return getConfig().getBoolean("admin-verify-enabled", false);
+    }
+
+    public void setAdminVerifyEnabled(boolean enabled) {
+        getConfig().set("admin-verify-enabled", enabled);
+        saveConfig();
+    }
+
+    public void unlockPlayerAfterApproval(Player player) {
+        if (player == null) {
+            return;
+        }
+        UUID uuid = player.getUniqueId();
+        verificationManager.markVerified(uuid);
+        verificationManager.clearNotice(uuid);
+        bookService.removeVerificationBook(player);
+        bookService.purgeVerificationBooks(player.getInventory(), uuid);
+        bookService.purgeVerificationBooksLater(player);
+        userStore.tryRestorePendingItem(player, true);
+        refreshVisibility();
     }
 
     public void refreshVisibility() {
@@ -157,24 +200,20 @@ public final class L2111pageloginverify extends JavaPlugin {
         ensureWebText("column-register", "Registered");
         ensureWebText("column-login", "Last Login");
         ensureWebText("column-pending", "Pending Item");
-        ensureWebText("column-pending-log", "Pending Log");
         ensureWebText("setting-enabled", "Verification");
         ensureWebText("setting-encryption", "Encryption");
         ensureWebText("setting-chat", "Chat Before Verify");
         ensureWebText("setting-hide", "Hide Unverified");
         ensureWebText("setting-sound", "Success Sound");
         ensureWebText("setting-volume", "Volume / Pitch");
-        ensureWebText("setting-save", "Save");
         ensureWebText("status-on", "ON");
         ensureWebText("status-off", "OFF");
-        ensureWebText("pending-stored-label", "stored");
-        ensureWebText("pending-restored-label", "restored");
     }
 
     private void ensureWebText(String key, String fallback) {
         String path = "web.text." + key;
         String value = getConfig().getString(path, "");
-        if (value == null || value.isBlank() || value.contains("?")) {
+        if (value == null || value.isBlank() || value.contains("?") || value.contains("\uFFFD")) {
             getConfig().set(path, fallback);
         }
     }

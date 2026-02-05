@@ -11,6 +11,7 @@ A Paper 1.21.11 login/registration verification plugin using a server-issued ver
 - Book content/colors fully configurable in YAML
 - Login info tracking (IP / time / per-login salt)
 - Separate datasets for encrypted vs plaintext mode (switchable)
+- Login/pending history stored separately in `logs.yml` with rolling limits
 - Built-in local web admin panel (pure Java, no external HTML files)
 
 ## Commands
@@ -44,6 +45,7 @@ See `config.yml`. Common keys:
 Stored under separate sections:
 - `data.hashed` for encrypted mode
 - `data.plain` for plaintext mode
+- Register time/IP stay with the user record; historical login/pending events are written to `logs.yml`
 
 ## Encoding Notes
 - Java source files must be UTF-8 **without BOM** (javac requirement).

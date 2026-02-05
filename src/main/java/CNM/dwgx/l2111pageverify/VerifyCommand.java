@@ -43,6 +43,15 @@ public final class VerifyCommand implements CommandExecutor, TabCompleter {
         if (args.length >= 1 && "encryption".equalsIgnoreCase(args[0])) {
             return handleEncryption(sender, args);
         }
+        if (args.length >= 1 && "adminverify".equalsIgnoreCase(args[0])) {
+            return handleAdminVerify(sender, args);
+        }
+        if (args.length >= 1 && "approve".equalsIgnoreCase(args[0])) {
+            return handleApprove(sender, args, true);
+        }
+        if (args.length >= 1 && "unapprove".equalsIgnoreCase(args[0])) {
+            return handleApprove(sender, args, false);
+        }
 
         if (sender instanceof Player player) {
             UUID uuid = player.getUniqueId();
@@ -128,6 +137,15 @@ public final class VerifyCommand implements CommandExecutor, TabCompleter {
             if ("encryption".startsWith(args[0].toLowerCase(Locale.ROOT))) {
                 completions.add("encryption");
             }
+            if ("adminverify".startsWith(args[0].toLowerCase(Locale.ROOT))) {
+                completions.add("adminverify");
+            }
+            if ("approve".startsWith(args[0].toLowerCase(Locale.ROOT))) {
+                completions.add("approve");
+            }
+            if ("unapprove".startsWith(args[0].toLowerCase(Locale.ROOT))) {
+                completions.add("unapprove");
+            }
         } else if (args.length == 2) {
             if ("chat".equalsIgnoreCase(args[0])) {
                 if ("on".startsWith(args[1].toLowerCase(Locale.ROOT))) {
@@ -151,6 +169,13 @@ public final class VerifyCommand implements CommandExecutor, TabCompleter {
                 }
                 if ("false".startsWith(args[1].toLowerCase(Locale.ROOT))) {
                     completions.add("false");
+                }
+            } else if ("adminverify".equalsIgnoreCase(args[0])) {
+                if ("on".startsWith(args[1].toLowerCase(Locale.ROOT))) {
+                    completions.add("on");
+                }
+                if ("off".startsWith(args[1].toLowerCase(Locale.ROOT))) {
+                    completions.add("off");
                 }
             }
         }
@@ -231,6 +256,71 @@ public final class VerifyCommand implements CommandExecutor, TabCompleter {
         plugin.setInitialized(true);
         userStore.reloadForMode(plugin.getDefaultPasswordMode());
         sender.sendMessage(enabled ? plugin.message("encryption-on") : plugin.message("encryption-off"));
+        return true;
+    }
+
+    private boolean handleAdminVerify(CommandSender sender, String[] args) {
+        if (!sender.hasPermission("dwgxverify.admin")) {
+            sender.sendMessage(plugin.message("no-permission"));
+            return true;
+        }
+        if (args.length < 2) {
+            sender.sendMessage(plugin.message("usage-admin-verify"));
+            return true;
+        }
+        String mode = args[1].toLowerCase(Locale.ROOT);
+        if ("on".equals(mode)) {
+            plugin.setAdminVerifyEnabled(true);
+            sender.sendMessage(plugin.message("admin-verify-on"));
+            return true;
+        }
+        if ("off".equals(mode)) {
+            plugin.setAdminVerifyEnabled(false);
+            sender.sendMessage(plugin.message("admin-verify-off"));
+            return true;
+        }
+        sender.sendMessage(plugin.message("usage-admin-verify"));
+        return true;
+    }
+
+    private boolean handleApprove(CommandSender sender, String[] args, boolean approved) {
+        if (!sender.hasPermission("dwgxverify.admin")) {
+            sender.sendMessage(plugin.message("no-permission"));
+            return true;
+        }
+        if (args.length < 2) {
+            sender.sendMessage(plugin.message("usage-approve"));
+            return true;
+        }
+        String target = args[1];
+        java.util.UUID uuid = null;
+        try {
+            uuid = java.util.UUID.fromString(target);
+        } catch (IllegalArgumentException ex) {
+            org.bukkit.OfflinePlayer offline = org.bukkit.Bukkit.getOfflinePlayer(target);
+            if (offline != null) {
+                uuid = offline.getUniqueId();
+            }
+        }
+        if (uuid == null) {
+            sender.sendMessage(plugin.message("approve-failed"));
+            return true;
+        }
+        boolean ok = userStore.setApproved(uuid, approved);
+        if (!ok) {
+            sender.sendMessage(plugin.message("approve-failed"));
+            return true;
+        }
+        if (approved) {
+            sender.sendMessage(plugin.message("approve-success"));
+        } else {
+            sender.sendMessage(plugin.message("unapprove-success"));
+        }
+        org.bukkit.entity.Player online = org.bukkit.Bukkit.getPlayer(uuid);
+        if (online != null && approved) {
+            plugin.unlockPlayerAfterApproval(online);
+            online.sendMessage(plugin.message("admin-verify-approved"));
+        }
         return true;
     }
 

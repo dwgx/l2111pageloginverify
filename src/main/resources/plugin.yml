@@ -10,7 +10,7 @@ softdepend: [ ProtocolLib ]
 commands:
   dwgxverify:
     description: "Login/registration verification and admin setup."
-    usage: "/dwgxverify [toggle | chat <on|off> | sound <Sound> [vol] [pitch] | hide <on|off> | encryption <true|false>]"
+    usage: "/dwgxverify [toggle | chat <on|off> | sound <Sound> [vol] [pitch] | hide <on|off> | encryption <true|false> | adminverify <on|off> | approve <player|uuid> | unapprove <player|uuid>]"
 permissions:
   dwgxverify.admin:
     description: "Allow configuring the verification plugin."

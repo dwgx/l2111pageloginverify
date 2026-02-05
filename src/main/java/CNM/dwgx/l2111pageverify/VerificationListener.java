@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
+import io.papermc.paper.event.player.AsyncChatEvent;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
@@ -25,7 +25,6 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.block.BlockDispenseEvent;
-import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -67,7 +66,7 @@ public final class VerificationListener implements Listener {
         if (!Bukkit.getOnlineMode()) {
             event.disallow(
                     AsyncPlayerPreLoginEvent.Result.KICK_OTHER,
-                    plugin.message("online-mode-required")
+                    net.kyori.adventure.text.Component.text(plugin.message("online-mode-required"))
             );
         }
     }
@@ -156,7 +155,7 @@ public final class VerificationListener implements Listener {
         var newMeta = event.getNewBookMeta();
         bookService.tagVerificationMeta(newMeta, uuid, session);
         event.setNewBookMeta(newMeta);
-        InputData input = parseInput(newMeta.getPages());
+        InputData input = parseInput(getPageStrings(newMeta));
         if (session == VerificationManager.SessionType.LOGIN) {
             handleLogin(player, input);
         } else {
@@ -261,7 +260,7 @@ public final class VerificationListener implements Listener {
                 event.setCurrentItem(null);
             }
             if (bookService.isAnyVerificationBook(event.getCursor())) {
-                event.setCursor(null);
+                event.getWhoClicked().setItemOnCursor(null);
             }
         }
     }
@@ -278,12 +277,12 @@ public final class VerificationListener implements Listener {
         }
         if (bookService.isAnyVerificationBook(event.getOldCursor())) {
             event.setCancelled(true);
-            event.setCursor(null);
+            event.getWhoClicked().setItemOnCursor(null);
         }
     }
 
     @EventHandler
-    public void onChat(AsyncPlayerChatEvent event) {
+    public void onChat(AsyncChatEvent event) {
         if (shouldBlock(event.getPlayer()) && !plugin.isChatAllowedBeforeVerify()) {
             event.setCancelled(true);
         }
@@ -441,31 +440,47 @@ public final class VerificationListener implements Listener {
         }
         String title = plugin.message("blocked-title");
         String sub = plugin.message("blocked-subtitle");
-        player.sendTitle(title, sub, 5, 30, 10);
+        net.kyori.adventure.text.Component titleComp = net.kyori.adventure.text.Component.text(title);
+        net.kyori.adventure.text.Component subComp = net.kyori.adventure.text.Component.text(sub);
+        net.kyori.adventure.title.Title.Times times = net.kyori.adventure.title.Title.Times.times(
+                java.time.Duration.ofMillis(250),
+                java.time.Duration.ofMillis(1500),
+                java.time.Duration.ofMillis(500)
+        );
+        player.showTitle(net.kyori.adventure.title.Title.title(titleComp, subComp, times));
     }
 
     private void playSuccessEffects(Player player) {
         String soundName = plugin.getConfig().getString("sound.success", "ENTITY_PLAYER_LEVELUP");
         float vol = (float) plugin.getConfig().getDouble("sound.volume", 1.0);
         float pitch = (float) plugin.getConfig().getDouble("sound.pitch", 1.0);
-        try {
-            String normalized = soundName == null ? "" : soundName.trim();
-            if (!normalized.isEmpty()) {
-                String key = normalized;
-                int idx = key.indexOf(':');
-                if (idx >= 0) {
-                    key = key.substring(idx + 1);
-                }
-                key = key.replace('.', '_').replace(' ', '_');
-                org.bukkit.Sound sound = org.bukkit.Sound.valueOf(key.toUpperCase(Locale.ROOT));
-                player.playSound(player.getLocation(), sound, vol, pitch);
-            }
-        } catch (IllegalArgumentException ex) {
+        org.bukkit.Sound sound = resolveSound(soundName);
+        if (sound != null) {
+            player.playSound(player.getLocation(), sound, vol, pitch);
+        } else {
             plugin.getLogger().warning("Invalid sound in config: " + soundName);
         }
 
         String action = plugin.message("success-actionbar").replace("%player%", player.getName());
-        player.sendActionBar(action);
+        player.sendActionBar(net.kyori.adventure.text.Component.text(action));
+    }
+
+    private org.bukkit.Sound resolveSound(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String value = raw.trim().toLowerCase(Locale.ROOT);
+        org.bukkit.NamespacedKey key;
+        if (value.contains(":")) {
+            int idx = value.indexOf(':');
+            String ns = value.substring(0, idx);
+            String path = value.substring(idx + 1).replace('_', '.').replace(' ', '.');
+            key = new org.bukkit.NamespacedKey(ns, path);
+        } else {
+            String path = value.replace('_', '.').replace(' ', '.');
+            key = org.bukkit.NamespacedKey.minecraft(path);
+        }
+        return org.bukkit.Registry.SOUNDS.get(key);
     }
 
     private void handleLogin(Player player, InputData input) {
@@ -478,6 +493,13 @@ public final class VerificationListener implements Listener {
         if (!userStore.verify(player.getUniqueId(), input.account(), input.password())) {
             verificationManager.setNotice(player.getUniqueId(), plugin.message("login-failed"), NoticeType.ERROR);
             player.sendMessage(plugin.message("login-failed"));
+            scheduleGiveBook(player, VerificationManager.SessionType.LOGIN);
+            return;
+        }
+
+        if (plugin.isAdminVerifyEnabled() && !userStore.isApproved(player.getUniqueId())) {
+            verificationManager.setNotice(player.getUniqueId(), plugin.message("admin-verify-required"), NoticeType.ERROR);
+            player.sendMessage(plugin.message("admin-verify-required"));
             scheduleGiveBook(player, VerificationManager.SessionType.LOGIN);
             return;
         }
@@ -526,12 +548,19 @@ public final class VerificationListener implements Listener {
             return;
         }
 
+        String registerIp = "";
+        if (player.getAddress() != null && player.getAddress().getAddress() != null) {
+            registerIp = player.getAddress().getAddress().getHostAddress();
+        }
+
         boolean registered = userStore.register(
                 player.getUniqueId(),
                 account,
                 password,
                 plugin.getDefaultPasswordMode(),
-                player.getName()
+                player.getName(),
+                registerIp,
+                !plugin.isAdminVerifyEnabled()
         );
         if (!registered) {
             verificationManager.setNotice(player.getUniqueId(),
@@ -539,6 +568,18 @@ public final class VerificationListener implements Listener {
                     NoticeType.ERROR);
             player.sendMessage(plugin.message("register-failed").replace("%reason%", plugin.message("register-already")));
             scheduleGiveBook(player, VerificationManager.SessionType.REGISTER);
+            return;
+        }
+
+        if (plugin.isAdminVerifyEnabled()) {
+            verificationManager.clearNotice(player.getUniqueId());
+            player.sendMessage(plugin.message("admin-verify-wait"));
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                bookService.removeVerificationBook(player);
+                bookService.purgeVerificationBooks(player.getInventory(), player.getUniqueId());
+                bookService.purgeVerificationBooksLater(player);
+            });
+            plugin.refreshVisibility();
             return;
         }
 
@@ -672,12 +713,35 @@ public final class VerificationListener implements Listener {
             return lines;
         }
         for (String rawLine : page.split("\n")) {
-            String line = ChatColor.stripColor(rawLine).trim();
+            String line = stripLegacyColors(rawLine).trim();
             if (!line.isEmpty()) {
                 lines.add(line);
             }
         }
         return lines;
+    }
+
+    private List<String> getPageStrings(org.bukkit.inventory.meta.BookMeta meta) {
+        if (meta == null) {
+            return List.of();
+        }
+        List<net.kyori.adventure.text.Component> pages = meta.pages();
+        if (pages == null || pages.isEmpty()) {
+            return List.of();
+        }
+        var serializer = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText();
+        List<String> result = new ArrayList<>(pages.size());
+        for (net.kyori.adventure.text.Component page : pages) {
+            result.add(serializer.serialize(page));
+        }
+        return result;
+    }
+
+    private String stripLegacyColors(String input) {
+        if (input == null) {
+            return "";
+        }
+        return input.replaceAll("(?i)\\u00A7[0-9A-FK-OR]", "");
     }
 
     private String[] splitKeyValue(String line) {

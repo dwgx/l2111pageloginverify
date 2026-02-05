@@ -1,6 +1,7 @@
-﻿﻿﻿﻿﻿initialized: true
+﻿﻿﻿﻿﻿﻿initialized: true
 enabled: true
 encryption-enabled: true
+admin-verify-enabled: false
 require-online-mode: true
 allow-chat-before-verify: false
 # Whether to auto-open the verification book
@@ -40,18 +41,18 @@ web:
     column-register: "Registered"
     column-login: "Last Login"
     column-pending: "Pending Item"
-    column-pending-log: "Pending Log"
     setting-enabled: "Verification"
     setting-encryption: "Encryption"
     setting-chat: "Chat Before Verify"
+    setting-admin-verify: "Admin Verify"
     setting-hide: "Hide Unverified"
     setting-sound: "Success Sound"
     setting-volume: "Volume / Pitch"
-    setting-save: "Save"
     status-on: "ON"
     status-off: "OFF"
-    pending-stored-label: "stored"
-    pending-restored-label: "restored"
+    action-approve: "Approve"
+    status-approved: "Approved"
+    status-pending: "Pending"
 
 messages:
   not-initialized: "§c服务器尚未初始化，请联系管理员。"
@@ -83,8 +84,18 @@ messages:
   usage-sound: "/dwgxverify sound <Sound> [volume] [pitch]"
   usage-hide: "/dwgxverify hide <on|off>"
   usage-encryption: "/dwgxverify encryption <true|false>"
+  usage-admin-verify: "/dwgxverify adminverify <on|off>"
+  usage-approve: "/dwgxverify approve <player|uuid>"
   encryption-on: "§a已开启加密模式（HASHED）。"
   encryption-off: "§e已关闭加密模式（PLAINTEXT）。"
+  admin-verify-on: "§a已开启管理员验证。"
+  admin-verify-off: "§e已关闭管理员验证。"
+  admin-verify-wait: "§e注册已提交，请等待管理员审核。"
+  admin-verify-required: "§c账号尚未通过管理员审核。"
+  admin-verify-approved: "§a管理员已通过你的账号审核。"
+  approve-success: "§a已通过审核。"
+  unapprove-success: "§e已取消审核。"
+  approve-failed: "§c审核失败，未找到该玩家。"
   player-only: "§e该指令只能由玩家执行。"
   sound-set: "§a音效已设置：%sound%  音量 %vol%  音高 %pitch%。"
   hide-on: "§a未验证玩家已隐藏。"
@@ -97,6 +108,10 @@ sound:
   success: "ENTITY_PLAYER_LEVELUP"
   volume: 1.0
   pitch: 1.0
+
+logs:
+  max-login: 300
+  max-pending: 300
 
 book:
   item-name: "§b验证书本"
