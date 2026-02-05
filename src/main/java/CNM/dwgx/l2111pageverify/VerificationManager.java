@@ -33,6 +33,10 @@ public final class VerificationManager {
         sessions.remove(uuid);
     }
 
+    public void markUnverified(UUID uuid) {
+        verified.remove(uuid);
+    }
+
     public void clear(UUID uuid) {
         verified.remove(uuid);
         sessions.remove(uuid);

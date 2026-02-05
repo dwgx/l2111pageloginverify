@@ -6,7 +6,6 @@ load: STARTUP
 authors: [ dwgx ]
 description: "Paper login verification with book input."
 website: "https://www.github.com/dwgx"
-softdepend: [ ProtocolLib ]
 commands:
   dwgxverify:
     description: "Login/registration verification and admin setup."

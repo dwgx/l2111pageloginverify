@@ -147,30 +147,48 @@ public final class VerificationBookService {
 
     public int placeBook(Player player, ItemStack book) {
         PlayerInventory inventory = player.getInventory();
-        int emptySlot = inventory.firstEmpty();
         UserStore.PendingItem pending = userStore.getPendingItem(player.getUniqueId());
-        int slot;
-        if (emptySlot >= 0) {
-            slot = emptySlot;
-        } else if (pending != null && pending.slot() >= 0) {
-            slot = pending.slot();
-        } else {
-            slot = inventory.getHeldItemSlot();
+        int slot = pickHotbarSlot(inventory, pending);
+
+        // If we still failed (should not), force to slot 0 to keep it usable
+        if (slot < 0 || slot > 8) {
+            slot = 0;
         }
-        if (emptySlot < 0 && pending == null) {
-            ItemStack replaced = inventory.getItem(slot);
-            if (replaced != null && replaced.getType() != Material.AIR && !isAnyVerificationBook(replaced)) {
-                userStore.setPendingItem(player.getUniqueId(), replaced, slot);
-                player.sendMessage(plugin.message("pending-stored"));
-                if (plugin.getConfig().getBoolean("log-pending", true)) {
-                    plugin.getLogger().info("Stored pending item for " + player.getName()
-                            + " slot=" + slot + " type=" + replaced.getType() + " x" + replaced.getAmount());
-                }
+
+        // If target slot is occupied by a non-verify item, store it pending
+        ItemStack replaced = inventory.getItem(slot);
+        if (replaced != null && replaced.getType() != Material.AIR && !isAnyVerificationBook(replaced)) {
+            userStore.setPendingItem(player.getUniqueId(), replaced, slot);
+            player.sendMessage(plugin.message("pending-stored"));
+            if (plugin.getConfig().getBoolean("log-pending", true)) {
+                plugin.getLogger().info("Stored pending item for " + player.getName()
+                        + " slot=" + slot + " type=" + replaced.getType() + " x" + replaced.getAmount());
             }
         }
+
         inventory.setItem(slot, book);
         player.updateInventory();
         return slot;
+    }
+
+    private int pickHotbarSlot(PlayerInventory inventory, UserStore.PendingItem pending) {
+        // 1) empty hotbar slot
+        for (int i = 0; i <= 8; i++) {
+            ItemStack item = inventory.getItem(i);
+            if (item == null || item.getType() == Material.AIR) {
+                return i;
+            }
+        }
+        // 2) reuse previous pending slot if it is in hotbar
+        if (pending != null && pending.slot() >= 0 && pending.slot() <= 8) {
+            return pending.slot();
+        }
+        // 3) current held slot (guaranteed hotbar)
+        int held = inventory.getHeldItemSlot();
+        if (held >= 0 && held <= 8) {
+            return held;
+        }
+        return 0;
     }
 
     public void forceOpen(Player player) {

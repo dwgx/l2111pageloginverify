@@ -56,8 +56,10 @@ public final class VerificationEnforcer implements Runnable {
             }
 
             Integer slot = verificationManager.getBookSlot(uuid);
-            if (slot != null && player.getInventory().getHeldItemSlot() != slot) {
-                player.getInventory().setHeldItemSlot(slot);
+            if (slot != null && slot >= 0 && slot <= 8) {
+                if (player.getInventory().getHeldItemSlot() != slot) {
+                    player.getInventory().setHeldItemSlot(slot);
+                }
             }
 
             boolean hard = plugin.getConfig().getBoolean("hard-force-open", false);

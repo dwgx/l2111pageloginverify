@@ -32,6 +32,7 @@ A Paper 1.21.11 login/registration verification plugin using a server-issued ver
 ## Web Panel
 - Enabled by default on `127.0.0.1:1337` (change via `web.bind` / `web.port`)
 - View users and toggle modes from the browser
+- Approve/unapprove users when admin verification is enabled
 - Basic Auth via `web.auth.username` / `web.auth.password`
 
 ## Configuration

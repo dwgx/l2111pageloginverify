@@ -178,6 +178,12 @@ public final class WebAdminServer {
                             plugin.unlockPlayerAfterApproval(player);
                             player.sendMessage(plugin.message("admin-verify-approved"));
                         }
+                    } else if (ok && !approve) {
+                        org.bukkit.entity.Player player = org.bukkit.Bukkit.getPlayer(uuid);
+                        if (player != null) {
+                            plugin.lockPlayerAfterUnapproval(player);
+                            player.sendMessage(plugin.message("admin-verify-required"));
+                        }
                     }
                 } catch (IllegalArgumentException ex) {
                     ok = false;
@@ -366,6 +372,7 @@ public final class WebAdminServer {
         String statusOn = text("status-on", "ON");
         String statusOff = text("status-off", "OFF");
         String actionApprove = text("action-approve", "Approve");
+        String actionUnapprove = text("action-unapprove", "Unapprove");
         String statusApproved = text("status-approved", "Approved");
         String statusPending = text("status-pending", "Pending");
         StringBuilder sb = new StringBuilder();
@@ -521,7 +528,9 @@ public final class WebAdminServer {
         sb.append("    const avatar = 'https://crafatar.com/avatars/' + u.uuid + '?size=32&overlay';\n");
         sb.append("    const fallback = u.mcName ? ('https://minotar.net/avatar/' + u.mcName + '/32') : '';\n");
         sb.append("    const keySalt = (u.mode === 'HASHED') ? (u.salt || '-') : (u.lastLoginSalt || '-');\n");
-        sb.append("    const approveCell = u.approved ? '" + escapeHtml(statusApproved) + "' : '<button class=\\\"minecraft-button\\\" onclick=\\\"approveUser(\\'' + u.uuid + '\\')\\\">" + escapeHtml(actionApprove) + "</button>';\n");
+        sb.append("    const approveCell = u.approved\n");
+        sb.append("      ? '<button class=\\\"minecraft-button\\\" onclick=\\\"setApproval(\\'' + u.uuid + '\\', false)\\\">" + escapeHtml(actionUnapprove) + "</button>'\n");
+        sb.append("      : '<button class=\\\"minecraft-button\\\" onclick=\\\"setApproval(\\'' + u.uuid + '\\', true)\\\">" + escapeHtml(actionApprove) + "</button>';\n");
         sb.append("    tr.innerHTML =\n");
         sb.append("      '<td>' + u.uuid + '</td>' +\n");
         sb.append("      '<td><img class=\\\"avatar\\\" src=\\\"' + avatar + '\\\" onerror=\\\"this.onerror=null; if(\\'' + fallback + '\\') { this.src=\\'' + fallback + '\\'; }\\\" /></td>' +\n");
@@ -536,13 +545,13 @@ public final class WebAdminServer {
         sb.append("    tbody.appendChild(tr);\n");
         sb.append("  }\n");
         sb.append("}\n\n");
-        sb.append("async function approveUser(uuid){\n");
+        sb.append("async function setApproval(uuid, approved){\n");
         sb.append("  const data = new URLSearchParams();\n");
         sb.append("  data.set('uuid', uuid);\n");
-        sb.append("  data.set('approved', 'true');\n");
+        sb.append("  data.set('approved', approved ? 'true' : 'false');\n");
         sb.append("  const res = await fetch('/api/approve', {method:'POST', body:data});\n");
         sb.append("  const json = await res.json();\n");
-        sb.append("  if(json.ok){ toast('Approved', 'ok'); } else { toast('Failed', 'err'); }\n");
+        sb.append("  if(json.ok){ toast(approved ? 'Approved' : 'Unapproved', 'ok'); } else { toast('Failed', 'err'); }\n");
         sb.append("  await loadUsers();\n");
         sb.append("}\n\n");
         sb.append("function bindAutoSave(id){\n");
