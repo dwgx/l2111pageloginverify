@@ -462,7 +462,8 @@ public final class VerificationListener implements Listener {
         }
 
         String action = plugin.message("success-actionbar").replace("%player%", player.getName());
-        player.sendActionBar(net.kyori.adventure.text.Component.text(action));
+        var legacy = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacySection();
+        player.sendActionBar(legacy.deserialize(action));
     }
 
     private org.bukkit.Sound resolveSound(String raw) {
