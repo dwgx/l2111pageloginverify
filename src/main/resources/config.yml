@@ -23,6 +23,7 @@ web:
   enabled: true
   bind: "127.0.0.1"
   port: 1337
+  local-only: true
   auth:
     enabled: true
     username: "admin"
@@ -46,6 +47,7 @@ web:
     setting-chat: "Chat Before Verify"
     setting-admin-verify: "Admin Verify"
     setting-hide: "Hide Unverified"
+    setting-local-only: "Local Only"
     setting-sound: "Success Sound"
     setting-volume: "Volume / Pitch"
     status-on: "ON"

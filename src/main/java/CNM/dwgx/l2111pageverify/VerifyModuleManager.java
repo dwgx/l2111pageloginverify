@@ -161,6 +161,7 @@ public final class VerifyModuleManager {
         ensureWebText("setting-encryption", "Encryption");
         ensureWebText("setting-chat", "Chat Before Verify");
         ensureWebText("setting-hide", "Hide Unverified");
+        ensureWebText("setting-local-only", "Local Only");
         ensureWebText("setting-sound", "Success Sound");
         ensureWebText("setting-volume", "Volume / Pitch");
         ensureWebText("status-on", "ON");
