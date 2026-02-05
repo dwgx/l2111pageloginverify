@@ -4,6 +4,8 @@ import java.io.File;
 import java.util.UUID;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+import CNM.dwgx.l2111pageverify.manager.VerifyModuleManager;
+import CNM.dwgx.l2111pageverify.manager.VerificationManager;
 
 public final class L2111pageloginverify extends JavaPlugin {
 
@@ -128,6 +130,13 @@ public final class L2111pageloginverify extends JavaPlugin {
     public void refreshVisibility() {
         if (moduleManager != null) {
             moduleManager.refreshVisibility();
+        }
+    }
+
+    public void reloadPluginConfig() {
+        reloadConfig();
+        if (moduleManager != null) {
+            moduleManager.reloadConfig();
         }
     }
 }

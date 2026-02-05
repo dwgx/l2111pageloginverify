@@ -1,6 +1,7 @@
 package CNM.dwgx.l2111pageverify;
 
 import CNM.dwgx.l2111pageverify.NoticeType;
+import CNM.dwgx.l2111pageverify.manager.VerificationManager;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -61,6 +62,40 @@ public final class VerificationListener implements Listener {
         this.bookService = bookService;
     }
 
+    public void handleDirectLogin(Player player, String account, String password) {
+        if (player == null) {
+            return;
+        }
+        verificationManager.setSession(player.getUniqueId(), VerificationManager.SessionType.LOGIN);
+        handleLogin(player, new InputData(account, password, null));
+    }
+
+    public void handleDirectRegister(Player player, String account, String password, String confirm) {
+        if (player == null) {
+            return;
+        }
+        verificationManager.setSession(player.getUniqueId(), VerificationManager.SessionType.REGISTER);
+        handleRegister(player, new InputData(account, password, confirm));
+    }
+
+    public void openResetRequest(Player player) {
+        if (player == null) {
+            return;
+        }
+        UUID uuid = player.getUniqueId();
+        if (!userStore.hasUser(uuid)) {
+            player.sendMessage(plugin.message("reset-no-account"));
+            verificationManager.setSession(uuid, VerificationManager.SessionType.REGISTER);
+            verificationManager.setNotice(uuid, plugin.message("open-register-book"), NoticeType.INFO);
+            scheduleGiveBook(player, VerificationManager.SessionType.REGISTER);
+            return;
+        }
+        verificationManager.setSession(uuid, VerificationManager.SessionType.LOGIN);
+        verificationManager.setNotice(uuid, plugin.message("open-reset-book"), NoticeType.INFO);
+        scheduleGiveBook(player, VerificationManager.SessionType.LOGIN);
+        player.sendMessage(plugin.message("open-reset-book"));
+    }
+
     @EventHandler(priority = EventPriority.LOWEST)
     public void onPreLogin(AsyncPlayerPreLoginEvent event) {
         if (!plugin.getConfig().getBoolean("require-online-mode", true)) {
@@ -82,7 +117,7 @@ public final class VerificationListener implements Listener {
             return;
         }
         UUID uuid = player.getUniqueId();
-        verificationManager.clear(uuid);
+        verificationManager.clearSession(uuid);
         prepareFlight(player);
 
         if (!plugin.isInitialized()) {
@@ -136,7 +171,7 @@ public final class VerificationListener implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
         restoreFlight(player);
-        verificationManager.clear(player.getUniqueId());
+        verificationManager.clearSession(player.getUniqueId());
         cleanupAttempts(player.getUniqueId());
     }
 
@@ -735,8 +770,12 @@ public final class VerificationListener implements Listener {
                 return;
             }
             if (!verificationManager.isVerified(player.getUniqueId())) {
-                verificationManager.markTimedOut(player.getUniqueId());
                 player.kick(net.kyori.adventure.text.Component.text(plugin.message("verify-timeout-kick")));
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    if (!player.isOnline()) {
+                        verificationManager.markTimedOut(player.getUniqueId());
+                    }
+                }, 1L);
             }
         }, delayTicks);
     }
@@ -1089,8 +1128,8 @@ public final class VerificationListener implements Listener {
             return false;
         }
         String v = value.trim().toLowerCase(Locale.ROOT);
-        return "是".equals(v)
-                || "同意".equals(v)
+        return "\u662f".equals(v) // 是
+                || "\u540c\u610f".equals(v) // 同意
                 || "agree".equals(v)
                 || "yes".equals(v)
                 || "y".equals(v);
@@ -1107,10 +1146,13 @@ public final class VerificationListener implements Listener {
         if (key.contains("qq")) {
             return ResetKey.QQ;
         }
-        if (key.contains("正版") || key.contains("昵称") || key.contains("mc") || key.contains("minecraft")) {
+        if (key.contains("\u6b63\u7248") // 正版
+                || key.contains("\u6635\u79f0") // 昵称
+                || key.contains("mc")
+                || key.contains("minecraft")) {
             return ResetKey.MCNAME;
         }
-        if (key.contains("同意") || key.contains("agree")) {
+        if (key.contains("\u540c\u610f") || key.contains("agree")) {
             return ResetKey.AGREE;
         }
         return null;

@@ -9,7 +9,8 @@ website: "https://www.github.com/dwgx"
 commands:
   dwgxverify:
     description: "Login/registration verification and admin setup."
-    usage: "/dwgxverify [toggle | chat <on|off> | sound <Sound> [vol] [pitch] | hide <on|off> | encryption <true|false> | adminverify <on|off> | approve <player|uuid> | unapprove <player|uuid> | reset <approve|reject> <player|uuid>]"
+    usage: "/dwgxverify [login <account> <password> | reg <account> <password> <confirm> | resetpass | toggle | chat <on|off> | sound <Sound> [vol] [pitch] | hide <on|off> | encryption <true|false> | adminverify <on|off> | approve <player|uuid> | unapprove <player|uuid> | reset <approve|reject> <player|uuid> | reloadconfig]"
+    aliases: [ dwgx ]
 permissions:
   dwgxverify.admin:
     description: "Allow configuring the verification plugin."

@@ -1,4 +1,15 @@
-package CNM.dwgx.l2111pageverify;
+package CNM.dwgx.l2111pageverify.manager;
+import CNM.dwgx.l2111pageverify.L2111pageloginverify;
+import CNM.dwgx.l2111pageverify.LogsStore;
+import CNM.dwgx.l2111pageverify.UserStore;
+import CNM.dwgx.l2111pageverify.ResetRequestStore;
+import CNM.dwgx.l2111pageverify.VerificationBookService;
+import CNM.dwgx.l2111pageverify.VerificationListener;
+import CNM.dwgx.l2111pageverify.VerificationEnforcer;
+import CNM.dwgx.l2111pageverify.NoticeType;
+import CNM.dwgx.l2111pageverify.command.VerifyCommand;
+import CNM.dwgx.l2111pageverify.web.WebAdminServer;
+
 
 import org.bukkit.Bukkit;
 import java.util.UUID;
@@ -16,6 +27,7 @@ public final class VerifyModuleManager {
     private VerificationBookService bookService;
     private WebAdminServer webAdminServer;
     private BukkitTask enforcerTask;
+    private VerificationListener verificationListener;
 
     public VerifyModuleManager(L2111pageloginverify plugin) {
         this.plugin = plugin;
@@ -36,8 +48,8 @@ public final class VerifyModuleManager {
         verificationManager = new VerificationManager();
         bookService = new VerificationBookService(plugin, verificationManager, userStore, resetStore);
 
-        var listener = new VerificationListener(plugin, userStore, resetStore, verificationManager, bookService);
-        Bukkit.getPluginManager().registerEvents(listener, plugin);
+        verificationListener = new VerificationListener(plugin, userStore, resetStore, verificationManager, bookService);
+        Bukkit.getPluginManager().registerEvents(verificationListener, plugin);
 
         enforcerTask = Bukkit.getScheduler().runTaskTimer(
                 plugin,
@@ -48,7 +60,7 @@ public final class VerifyModuleManager {
 
         PluginCommand command = plugin.getCommand("dwgxverify");
         if (command != null) {
-            VerifyCommand executor = new VerifyCommand(plugin, userStore, resetStore, verificationManager, bookService);
+            VerifyCommand executor = new VerifyCommand(plugin, userStore, resetStore, verificationManager, bookService, verificationListener);
             command.setExecutor(executor);
             command.setTabCompleter(executor);
         } else {
@@ -73,6 +85,23 @@ public final class VerifyModuleManager {
         }
         if (resetStore != null) {
             resetStore.save();
+        }
+    }
+
+    public void reloadConfig() {
+        if (logsStore != null) {
+            logsStore.load();
+        }
+        if (userStore != null) {
+            userStore.load();
+        }
+        if (resetStore != null) {
+            resetStore.load();
+        }
+        if (webAdminServer != null) {
+            webAdminServer.stop();
+            webAdminServer = new WebAdminServer(plugin, userStore, resetStore);
+            webAdminServer.start();
         }
     }
 

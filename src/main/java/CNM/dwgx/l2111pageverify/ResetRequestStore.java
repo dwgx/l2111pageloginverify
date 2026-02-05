@@ -10,7 +10,7 @@ import java.util.logging.Level;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 
-public final class ResetRequestStore {
+public final class  ResetRequestStore {
 
     public enum Status {
         PENDING,

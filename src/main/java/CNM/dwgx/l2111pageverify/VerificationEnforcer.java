@@ -1,6 +1,7 @@
 package CNM.dwgx.l2111pageverify;
 
 import CNM.dwgx.l2111pageverify.NoticeType;
+import CNM.dwgx.l2111pageverify.manager.VerificationManager;
 
 import java.util.UUID;
 import org.bukkit.Bukkit;

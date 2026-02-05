@@ -1,4 +1,12 @@
-package CNM.dwgx.l2111pageverify;
+package CNM.dwgx.l2111pageverify.command;
+import CNM.dwgx.l2111pageverify.L2111pageloginverify;
+import CNM.dwgx.l2111pageverify.UserStore;
+import CNM.dwgx.l2111pageverify.ResetRequestStore;
+import CNM.dwgx.l2111pageverify.VerificationBookService;
+import CNM.dwgx.l2111pageverify.VerificationListener;
+import CNM.dwgx.l2111pageverify.NoticeType;
+import CNM.dwgx.l2111pageverify.manager.VerificationManager;
+
 
 import java.util.ArrayList;
 import java.util.List;
@@ -9,7 +17,6 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
-import CNM.dwgx.l2111pageverify.NoticeType;
 
 public final class VerifyCommand implements CommandExecutor, TabCompleter {
 
@@ -18,19 +25,31 @@ public final class VerifyCommand implements CommandExecutor, TabCompleter {
     private final ResetRequestStore resetStore;
     private final VerificationManager verificationManager;
     private final VerificationBookService bookService;
+    private final VerificationListener verificationListener;
 
     public VerifyCommand(L2111pageloginverify plugin, UserStore userStore, ResetRequestStore resetStore,
                          VerificationManager verificationManager,
-                         VerificationBookService bookService) {
+                         VerificationBookService bookService,
+                         VerificationListener verificationListener) {
         this.plugin = plugin;
         this.userStore = userStore;
         this.resetStore = resetStore;
         this.verificationManager = verificationManager;
         this.bookService = bookService;
+        this.verificationListener = verificationListener;
     }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (args.length >= 1 && "login".equalsIgnoreCase(args[0])) {
+            return handleDirectLogin(sender, args);
+        }
+        if (args.length >= 1 && ("reg".equalsIgnoreCase(args[0]) || "register".equalsIgnoreCase(args[0]))) {
+            return handleDirectRegister(sender, args);
+        }
+        if (args.length >= 1 && ("resetpass".equalsIgnoreCase(args[0]) || "restpass".equalsIgnoreCase(args[0]))) {
+            return handleResetPass(sender);
+        }
         if (args.length >= 1 && "toggle".equalsIgnoreCase(args[0])) {
             return handleToggle(sender);
         }
@@ -57,6 +76,9 @@ public final class VerifyCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length >= 1 && "reset".equalsIgnoreCase(args[0])) {
             return handleReset(sender, args);
+        }
+        if (args.length >= 1 && "reloadconfig".equalsIgnoreCase(args[0])) {
+            return handleReloadConfig(sender);
         }
 
         if (sender instanceof Player player) {
@@ -127,7 +149,23 @@ public final class VerifyCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         List<String> completions = new ArrayList<>();
+        boolean isAdmin = sender.hasPermission("dwgxverify.admin");
         if (args.length == 1) {
+            if ("login".startsWith(args[0].toLowerCase(Locale.ROOT))) {
+                completions.add("login");
+            }
+            if ("reg".startsWith(args[0].toLowerCase(Locale.ROOT))) {
+                completions.add("reg");
+            }
+            if ("resetpass".startsWith(args[0].toLowerCase(Locale.ROOT))) {
+                completions.add("resetpass");
+            }
+            if ("restpass".startsWith(args[0].toLowerCase(Locale.ROOT))) {
+                completions.add("restpass");
+            }
+            if (!isAdmin) {
+                return completions;
+            }
             if ("toggle".startsWith(args[0].toLowerCase(Locale.ROOT))) {
                 completions.add("toggle");
             }
@@ -155,7 +193,13 @@ public final class VerifyCommand implements CommandExecutor, TabCompleter {
             if ("reset".startsWith(args[0].toLowerCase(Locale.ROOT))) {
                 completions.add("reset");
             }
+            if ("reloadconfig".startsWith(args[0].toLowerCase(Locale.ROOT))) {
+                completions.add("reloadconfig");
+            }
         } else if (args.length == 2) {
+            if (!isAdmin) {
+                return completions;
+            }
             if ("chat".equalsIgnoreCase(args[0])) {
                 if ("on".startsWith(args[1].toLowerCase(Locale.ROOT))) {
                     completions.add("on");
@@ -386,6 +430,86 @@ public final class VerifyCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("approve".equals(action)
                 ? plugin.message("reset-approve-success")
                 : plugin.message("reset-reject-success"));
+        return true;
+    }
+
+    private boolean handleDirectLogin(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(plugin.message("player-only"));
+            return true;
+        }
+        if (!plugin.isInitialized()) {
+            player.sendMessage(plugin.message("not-initialized"));
+            return true;
+        }
+        if (!plugin.isVerificationEnabled()) {
+            player.sendMessage(plugin.message("verification-disabled"));
+            return true;
+        }
+        if (args.length < 3) {
+            player.sendMessage(plugin.message("usage-login"));
+            return true;
+        }
+        String account = args[1];
+        String pass = args[2];
+        if (verificationListener != null) {
+            verificationListener.handleDirectLogin(player, account, pass);
+        }
+        return true;
+    }
+
+    private boolean handleDirectRegister(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(plugin.message("player-only"));
+            return true;
+        }
+        if (!plugin.isInitialized()) {
+            player.sendMessage(plugin.message("not-initialized"));
+            return true;
+        }
+        if (!plugin.isVerificationEnabled()) {
+            player.sendMessage(plugin.message("verification-disabled"));
+            return true;
+        }
+        if (args.length < 3) {
+            player.sendMessage(plugin.message("usage-reg"));
+            return true;
+        }
+        String account = args[1];
+        String pass = args[2];
+        String confirm = args.length >= 4 ? args[3] : pass;
+        if (verificationListener != null) {
+            verificationListener.handleDirectRegister(player, account, pass, confirm);
+        }
+        return true;
+    }
+
+    private boolean handleResetPass(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(plugin.message("player-only"));
+            return true;
+        }
+        if (!plugin.isInitialized()) {
+            player.sendMessage(plugin.message("not-initialized"));
+            return true;
+        }
+        if (!plugin.isVerificationEnabled()) {
+            player.sendMessage(plugin.message("verification-disabled"));
+            return true;
+        }
+        if (verificationListener != null) {
+            verificationListener.openResetRequest(player);
+        }
+        return true;
+    }
+
+    private boolean handleReloadConfig(CommandSender sender) {
+        if (!sender.hasPermission("dwgxverify.admin")) {
+            sender.sendMessage(plugin.message("no-permission"));
+            return true;
+        }
+        plugin.reloadPluginConfig();
+        sender.sendMessage(plugin.message("config-reloaded"));
         return true;
     }
 

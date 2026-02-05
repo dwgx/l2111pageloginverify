@@ -1,4 +1,6 @@
-package CNM.dwgx.l2111pageverify;
+package CNM.dwgx.l2111pageverify.manager;
+import CNM.dwgx.l2111pageverify.NoticeType;
+
 
 import java.util.Map;
 import java.util.Set;
@@ -52,7 +54,20 @@ public final class VerificationManager {
         lastOpenTimes.remove(uuid);
         prevAllowFlight.remove(uuid);
         prevFlying.remove(uuid);
-        timedOut.remove(uuid);
+        titleShown.remove(uuid);
+    }
+
+    public void clearSession(UUID uuid) {
+        verified.remove(uuid);
+        sessions.remove(uuid);
+        tokens.remove(uuid);
+        bookSlots.remove(uuid);
+        storedItems.remove(uuid);
+        notices.remove(uuid);
+        noticeTypes.remove(uuid);
+        lastOpenTimes.remove(uuid);
+        prevAllowFlight.remove(uuid);
+        prevFlying.remove(uuid);
         titleShown.remove(uuid);
     }
 
@@ -148,9 +163,4 @@ public final class VerificationManager {
     public boolean consumeTimedOut(UUID uuid) {
         return timedOut.remove(uuid);
     }
-}
-
-enum NoticeType {
-    INFO,
-    ERROR
 }

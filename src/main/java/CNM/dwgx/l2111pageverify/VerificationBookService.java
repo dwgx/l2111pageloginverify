@@ -13,6 +13,7 @@ import org.bukkit.inventory.meta.BookMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import CNM.dwgx.l2111pageverify.NoticeType;
+import CNM.dwgx.l2111pageverify.manager.VerificationManager;
 
 public final class VerificationBookService {
 
