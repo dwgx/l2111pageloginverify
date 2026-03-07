@@ -13,6 +13,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Level;
+import java.util.concurrent.ConcurrentHashMap;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -25,9 +26,9 @@ public final class UserStore {
     private final L2111pageloginverify plugin;
     private final LogsStore logsStore;
     private final SecureRandom secureRandom = new SecureRandom();
-    private final Map<UUID, UserRecord> users = new HashMap<>();
-    private final Map<String, UUID> accountIndex = new HashMap<>();
-    private final Map<UUID, PendingItem> pendingItems = new HashMap<>();
+    private final Map<UUID, UserRecord> users = new ConcurrentHashMap<>();
+    private final Map<String, UUID> accountIndex = new ConcurrentHashMap<>();
+    private final Map<UUID, PendingItem> pendingItems = new ConcurrentHashMap<>();
 
     private YamlConfiguration config;
     private String activeSectionKey = "data.hashed";
@@ -41,7 +42,7 @@ public final class UserStore {
         loadForMode(plugin.getDefaultPasswordMode());
     }
 
-    public void loadForMode(PasswordMode mode) {
+    public synchronized void loadForMode(PasswordMode mode) {
         File file = plugin.getUsersFile();
         if (!file.exists()) {
             try {
@@ -151,7 +152,7 @@ public final class UserStore {
         }
     }
 
-    public void save() {
+    public synchronized void save() {
         if (config == null) {
             config = new YamlConfiguration();
         }
