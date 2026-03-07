@@ -70,9 +70,28 @@ Paper 1.21.11 login/registration verification plugin using a server-issued verif
 - `book.*`
 
 ## Build
+
+### Prerequisites
+- JDK 21
+- Gradle (this repository currently has `gradle-wrapper.properties` but does not include `gradle-wrapper.jar`)
+
+### With local Gradle
+```bash
+gradle build
+```
+
+### After restoring the Gradle wrapper (recommended)
+Windows:
+```bash
+gradlew.bat build
+```
+
+Linux/macOS:
 ```bash
 ./gradlew build
 ```
+
+Build output is generated in `build/libs/`.
 
 ## Encoding Notes
 - Java source files must be UTF-8 **without BOM**
